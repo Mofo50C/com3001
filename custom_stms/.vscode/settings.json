@@ -1,6 +1,0 @@
-{
-    "files.associations": {
-        "errno-base.h": "c",
-        "tml_base.h": "c"
-    }
-}

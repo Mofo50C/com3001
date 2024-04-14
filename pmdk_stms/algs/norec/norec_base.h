@@ -7,9 +7,9 @@
 extern "C" {
 #endif
 
-void norec_tx_startup(PMEMobjpool *pop);
+void norec_thread_enter(PMEMobjpool *pop);
 
-void norec_tx_cleanup(void);
+void norec_thread_exit(void);
 
 int norec_tx_begin(jmp_buf env);
 

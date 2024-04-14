@@ -7,7 +7,7 @@ ALGS_DIR:=$(abspath ..)
 DEPS=-I$(ROOT_DIR)/lib
 DEPS+=-I$(ALGS_DIR)/common
 DEPS+=-I$(CURDIR)
-LIBS:=-lpmemobj
+LIBS:=-lpmemobj -lpmem
 OUT_DIR:=./out
 
 _OBJS=tml.o

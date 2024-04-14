@@ -14,11 +14,11 @@
 
 #include "tx_generic.h"
 
-#define TML_STARTUP(pop)\
-tml_tx_startup(pop)
+#define TML_ENTER(pop)\
+tml_thread_enter(pop)
 
-#define TML_CLEANUP()\
-tml_tx_cleanup()
+#define TML_EXIT()\
+tml_thread_exit()
 
 /* define aliases for macros */
 #define TML_BEGIN _TX_BEGIN

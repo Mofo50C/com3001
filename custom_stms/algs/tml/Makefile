@@ -4,13 +4,15 @@ CFLAGS:=-c -Wall
 ROOT_DIR:=$(abspath ../..)
 ALGS_DIR:=$(abspath ..)
 
+vpath %.c $(ROOT_DIR)/lib
+
 DEPS=-I$(ROOT_DIR)/lib
 DEPS+=-I$(ALGS_DIR)/common
 DEPS+=-I$(CURDIR)
-LIBS:=-lpmemobj -lpmem
+LIBS:=
 OUT_DIR:=./out
 
-_OBJS=norec.o hashindex.o
+_OBJS=tml.o tml_util.o util.o
 OBJS=$(addprefix $(OUT_DIR)/,$(_OBJS))
 
 .PHONY: all

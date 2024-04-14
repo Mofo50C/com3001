@@ -19,14 +19,14 @@ pid_t txpmdk_get_tid(void)
 	return get_tx_meta()->tid;
 }
 
-void txpmdk_startup(PMEMobjpool *pop)
+void txpmdk_thread_enter(PMEMobjpool *pop)
 {
 	struct tx_meta *tx = get_tx_meta();
 	tx->tid = gettid();
 	tx->pop = pop;
 }
 
-void txpmdk_cleanup(void) {}
+void txpmdk_thread_exit(void) {}
 
 void txpmdk_preabort(void) {}
 

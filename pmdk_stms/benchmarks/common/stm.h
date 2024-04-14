@@ -4,9 +4,11 @@
 #if defined(TML)
 	#include "tml.h"
 
-	#define STM_TH_ENTER TML_STARTUP
-	#define STM_TH_EXIT TML_CLEANUP
+	#define STM_TH_ENTER TML_ENTER
+	#define STM_TH_EXIT TML_EXIT
 
+	#define STM_STARTUP
+	#define STM_CLEANUP
 
 	#if defined(RAII)
 		#define STM_BEGIN TML_BEGIN
@@ -33,8 +35,11 @@
 #elif defined(NOREC)
 	#include "norec.h"
 
-	#define STM_TH_ENTER NOREC_STARTUP
-	#define STM_TH_EXIT NOREC_CLEANUP
+	#define STM_TH_ENTER NOREC_ENTER
+	#define STM_TH_EXIT NOREC_EXIT
+
+	#define STM_STARTUP
+	#define STM_CLEANUP
 
 	#if defined(RAII)
 		#define STM_BEGIN NOREC_BEGIN
@@ -61,9 +66,11 @@
 #else
 	#include "txpmdk.h"
 
-	#define STM_TH_ENTER TXPMDK_STARTUP
-	#define STM_TH_EXIT TXPMDK_CLEANUP
+	#define STM_TH_ENTER TXPMDK_ENTER
+	#define STM_TH_EXIT TXPMDK_EXIT
 
+	#define STM_STARTUP
+	#define STM_CLEANUP
 
 	#if defined(RAII)
 		#define STM_BEGIN TXPMDK_BEGIN

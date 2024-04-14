@@ -47,14 +47,14 @@ void tml_preabort(void)
 	}
 }
 
-void tml_tx_startup(PMEMobjpool *pop)
+void tml_thread_enter(PMEMobjpool *pop)
 {
 	struct tx_meta *tx = get_tx_meta();
 	tx->tid = gettid();
 	tx->pop = pop;
 }
 
-void tml_tx_cleanup(void) {}
+void tml_thread_exit(void) {}
 
 int tml_tx_begin(jmp_buf env)
 {

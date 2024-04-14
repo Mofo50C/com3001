@@ -14,8 +14,8 @@
 
 #include "tx_generic.h"
 
-#define TXPMDK_STARTUP txpmdk_startup
-#define TXPMDK_CLEANUP txpmdk_cleanup
+#define TXPMDK_ENTER txpmdk_thread_enter
+#define TXPMDK_EXIT txpmdk_thread_exit
 
 /* define aliases for macros */
 #define TXPMDK_BEGIN _TX_BEGIN

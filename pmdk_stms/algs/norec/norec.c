@@ -197,7 +197,7 @@ void norec_tx_abort(void)
 	pmemobj_tx_abort(-1);
 }
 
-void norec_tx_startup(PMEMobjpool *pop)
+void norec_thread_enter(PMEMobjpool *pop)
 {
 	struct tx_meta *tx = get_tx_meta();
 
@@ -317,7 +317,7 @@ int norec_tx_end(void)
 	return pmemobj_tx_end();
 }
 
-void norec_tx_cleanup(void)
+void norec_thread_exit(void)
 {
 	norec_rdset_destroy();
 	norec_wrset_destroy();

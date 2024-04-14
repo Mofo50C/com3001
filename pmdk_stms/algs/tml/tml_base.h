@@ -1,14 +1,15 @@
-#include <libpmemobj.h>
 #ifndef TML_BASE_H
 #define TML_BASE_H 1
+
+#include <libpmemobj.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void tml_tx_startup(PMEMobjpool *pop);
+void tml_thread_enter(PMEMobjpool *pop);
 
-void tml_tx_cleanup(void);
+void tml_thread_exit(void);
 
 int tml_tx_begin(jmp_buf env);
 

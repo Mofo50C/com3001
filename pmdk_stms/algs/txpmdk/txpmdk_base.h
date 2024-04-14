@@ -6,9 +6,9 @@
 extern "C" {
 #endif
 
-void txpmdk_startup(PMEMobjpool *pop);
+void txpmdk_thread_enter(PMEMobjpool *pop);
 
-void txpmdk_cleanup(void);
+void txpmdk_thread_exit(void);
 
 int txpmdk_begin(jmp_buf env);
 

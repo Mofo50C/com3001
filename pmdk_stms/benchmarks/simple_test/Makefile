@@ -9,7 +9,7 @@ vpath %.c $(ROOT_DIR)/lib
 INCS=-I$(ROOT_DIR)/lib
 INCS+=-I$(BENCH_DIR)/common
 INCS+=-I$(ALGS_DIR)/common
-LIBS:=-lpmemobj -lpthread
+LIBS:=-lpmemobj -lpmem -lpthread
 OUT_DIR:=./out
 
 _OBJS:=simple_test.o

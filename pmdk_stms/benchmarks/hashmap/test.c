@@ -126,6 +126,8 @@ int main(int argc, char const *argv[])
 	if (hashmap_destroy(&rootp->map))
 		printf("error in destroy...\n");
 
+	STM_TH_EXIT();
+
 	pmemobj_close(pop);
 
     return 0;

@@ -14,11 +14,11 @@
 
 #include "tx_generic.h"
 
-#define NOREC_STARTUP(pop)\
-norec_tx_startup(pop)
+#define NOREC_ENTER(pop)\
+norec_thread_enter(pop)
 
-#define NOREC_CLEANUP()\
-norec_tx_cleanup()
+#define NOREC_EXIT()\
+norec_thread_exit()
 
 /* define aliases for macros */
 #define NOREC_BEGIN _TX_BEGIN

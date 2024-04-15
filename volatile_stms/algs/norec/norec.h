@@ -1,6 +1,8 @@
 #ifndef NOREC_H
 #define NOREC_H 1
 
+#include <errno.h>
+#include "util.h"
 #include "norec_base.h"
 
 #define NOREC_BEGIN()\
@@ -12,9 +14,8 @@
 _TX_RETRY_LABEL:\
 	if (setjmp(_tx_env)) {\
 		errno = tx_get_error();\
-	} else {\
-		if (_tx_errno = norec_tx_begin(_tx_env))\
-			errno = _tx_errno;\
+	} else if ((_tx_errno = norec_tx_begin(_tx_env))) {\
+		errno = _tx_errno;\
 	}\
 	while ((_stage = tx_get_stage()) != TX_STAGE_NONE) {\
 		switch (_stage) {\

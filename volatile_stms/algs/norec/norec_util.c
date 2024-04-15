@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "norec_util.h"
+#include "util.h"
 
 #define VEC_INIT 8
 
@@ -216,9 +217,11 @@ int _tx_hash_insert(struct tx_hash *h, uintptr_t key, uint64_t hash, uint64_t va
 
 int tx_hash_resize(struct tx_hash *h)
 {
-	if (((float)h->length / h->capacity) < MAX_LOAD_FACTOR) return;
+	if (((float)h->length / h->capacity) < MAX_LOAD_FACTOR)
+		return 0;
 
-	if (h->num_grows == MAX_GROWS) return;
+	if (h->num_grows == MAX_GROWS)
+		return 1;
 
 	int old_cap = h->capacity;
 	int new_cap = TABLE_PRIMES[++h->num_grows];

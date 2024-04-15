@@ -1,6 +1,8 @@
 #ifndef TML_H
 #define TML_H 1
 
+#include <errno.h>
+#include "util.h"
 #include "tml_base.h"
 
 #define TML_BEGIN()\
@@ -12,9 +14,8 @@
 _TX_RETRY_LABEL:\
 	if (setjmp(_tx_env)) {\
 		errno = tx_get_error();\
-	} else {\
-		if (_tx_errno = tml_tx_begin(_tx_env))\
-			errno = _tx_errno;\
+	} else if ((_tx_errno = tml_tx_begin(_tx_env))) {\
+		errno = _tx_errno;\
 	}\
 	while ((_stage = tx_get_stage()) != TX_STAGE_NONE) {\
 		switch (_stage) {\
@@ -65,7 +66,7 @@ _TX_RETRY_LABEL:\
 #define TML_READ_CHECK tml_tx_read()
 
 #define TML_WRITE(var, val)\
-	TML_WRITE_DIRECT(&(var), val)
+	TML_WRITE_DIRECT(&(var), val, sizeof(__typeof__(val)))
 
 #define TML_WRITE_DIRECT(p, value, sz) ({\
 	TML_WRITE_CHECK;\

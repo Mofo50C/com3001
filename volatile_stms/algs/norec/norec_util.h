@@ -70,7 +70,7 @@ int tx_vector_resize(struct tx_vec *vec);
 
 int tx_vector_append(struct tx_vec *vec, struct tx_vec_entry *entry);
 
-void tx_vector_destroy(struct tx_vec *vec);
+void tx_vector_destroy(struct tx_vec **vecp);
 
 void tx_vector_empty(struct tx_vec *vec);
 

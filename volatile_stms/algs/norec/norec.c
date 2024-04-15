@@ -207,7 +207,7 @@ bool norec_wrset_get(void *pdirect, void *buf, size_t size)
 
 	uintptr_t key = (uintptr_t)pdirect;
 
-	struct tx_hash_entry *entry = tx_hash_get(tx->write_set, key);
+	struct tx_hash_entry *entry = tx_hash_get(tx->wrset_lookup, key);
 	if (entry == NULL)
 		return false;
 	

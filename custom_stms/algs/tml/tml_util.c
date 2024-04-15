@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include "tml_util.h"
 
 #define VEC_INIT 8
@@ -85,6 +86,11 @@ int tx_vector_init(struct tx_vec **vecp)
 
 	size_t sz = VEC_INIT * sizeof(void *);
 	v->addrs = malloc(sz);
+	if (v->addrs == NULL) {
+		free(v);
+		return 1;
+	}
+
 	memset(v->addrs, 0, sz);
 	*vecp = v;
 
@@ -119,10 +125,12 @@ int tx_vector_append(struct tx_vec *vec, void *entry)
 	return 0;
 }
 
-void tx_vector_destroy(struct tx_vec *vec)
+void tx_vector_destroy(struct tx_vec **vecp)
 {
+	struct tx_vec *vec = *vecp;
 	free(vec->addrs);
 	free(vec);
+	*vecp = NULL;
 }
 
 void tx_vector_empty(struct tx_vec *vec)

@@ -80,9 +80,17 @@ void tml_thread_enter(void)
 {
 	struct tx_meta *tx = get_tx_meta();
 	tx->tid = gettid();
+	if (tx_vector_init(&tx->free_list)) {
+		DEBUGLOG("failed to init free list");
+		abort();
+	}
 }
 
-void tml_thread_exit(void) {}
+void tml_thread_exit(void) {
+	struct tx_meta *tx = get_tx_meta();
+	tx_vector_empty(tx->free_list);
+	tx_vector_destroy(&tx->free_list);
+}
 
 int tml_tx_begin(jmp_buf env)
 {
@@ -93,11 +101,6 @@ int tml_tx_begin(jmp_buf env)
 	tx->retry = 0;
 	if (stage == TX_STAGE_NONE) {
 		if (tx_stack_init(&tx->entries)) {
-			err = errno;
-			goto err_abort;
-		}
-
-		if (tx_vector_init(&tx->free_list)) {
 			err = errno;
 			goto err_abort;
 		}
@@ -265,7 +268,7 @@ int tml_tx_end(void)
 	int ret = tx->last_errnum;
 	if (tx_stack_isempty(tx->entries)) {
 		tx->stage = TX_STAGE_NONE;
-		tx_vector_destroy(tx->entries);
+		tx_vector_empty(tx->free_list);
 	} else {
 		tx->stage = TX_STAGE_WORK;
 		tx->level--;

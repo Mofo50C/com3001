@@ -10,7 +10,7 @@ DEPS+=-I$(CURDIR)
 LIBS:=-lpmemobj -lpmem
 OUT_DIR:=./out
 
-_OBJS=norec.o hashindex.o
+_OBJS=norec.o norec_util.o
 OBJS=$(addprefix $(OUT_DIR)/,$(_OBJS))
 
 .PHONY: all

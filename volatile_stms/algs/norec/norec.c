@@ -10,6 +10,7 @@ struct tx_meta {
 	enum tx_stage stage;
 	struct tx_stack *entries;
 	struct tx_vec *free_list;
+	struct tx_vec *alloc_list;
 	pid_t tid;
 	int level;
 	int last_errnum;
@@ -59,6 +60,13 @@ void _tx_abort(int errnum)
 		tx->stage = TX_STAGE_ONABORT;
 	
 	struct tx_data *txd = tx->entries->head;
+	if (txd->next == NULL && tx->level == 0) {
+		int i;
+		for (i = 0; i < tx->alloc_list->length; i++) {
+			struct tx_vec_entry *e = &tx->alloc_list->arr[i];
+			free(e->addr);
+		}
+	}
 
 	tx->last_errnum = errnum;
 	errno = errnum;
@@ -86,6 +94,9 @@ void norec_thread_enter(void)
 	if (tx_vector_init(&tx->free_list))
 		goto err_abort;
 
+	if (tx_vector_init(&tx->alloc_list))
+		goto err_abort;
+
 	if (tx_vector_init(&tx->write_set))
 		goto err_abort;
 
@@ -106,6 +117,9 @@ void norec_thread_exit(void) {
 	struct tx_meta *tx = get_tx_meta();
 	tx_vector_empty(tx->free_list);
 	tx_vector_destroy(&tx->free_list);
+
+	tx_vector_empty_unsafe(tx->alloc_list);
+	tx_vector_destroy(&tx->alloc_list);
 
 	tx_vector_empty(tx->write_set);
 	tx_vector_destroy(&tx->write_set);
@@ -160,6 +174,7 @@ int norec_tx_begin(jmp_buf env)
 	return 0;
 
 err_abort:
+	DEBUGLOG("tx failed to start");
 	if (tx->stage == TX_STAGE_WORK)
 		_tx_abort(err);
 	else
@@ -188,15 +203,16 @@ void norec_rdset_add(void *pdirect, void *src, size_t size)
 		.size = size
 	};
 
-	if (tx_vector_append(tx->read_set, &e)) {
+	if (tx_vector_append(tx->read_set, &e) < 0) {
 		err = errno;
+		free(pval);
 		goto err_abort;
 	}
 
 	return;
 
 err_abort:
-	free(pval);
+	DEBUGLOG("tx_read failed");
 	_tx_abort(err);
 }
 
@@ -223,6 +239,7 @@ void norec_tx_write(void *pdirect_field, size_t size, void *pval)
 
 	uintptr_t field_key = (uintptr_t)pdirect_field;
 
+	int err = 0;
 	struct tx_hash_entry *entry;
 	if ((entry = tx_hash_get(tx->wrset_lookup, field_key))) {
 		struct tx_vec_entry *v = &tx->write_set->arr[entry->index];
@@ -236,8 +253,17 @@ void norec_tx_write(void *pdirect_field, size_t size, void *pval)
 			.addr = pdirect_field
 		};
 		size_t idx = tx_vector_append(tx->write_set, &e);
+		if (idx < 0) {
+			err = errno;
+			goto err_abort;
+		}
+
 		tx_hash_put(tx->wrset_lookup, field_key, idx);
 	}
+
+err_abort:
+	DEBUGLOG("tx_write failed");
+	_tx_abort(err);
 }
 
 void norec_validate(void)
@@ -289,8 +315,10 @@ int norec_tx_free(void *ptr)
 		.size = 0
 	};
 
-	if (tx_vector_append(tx->free_list, &e))
+	if (tx_vector_append(tx->free_list, &e) < 0) {
+		DEBUGLOG("tx_free failed");
 		_tx_abort(errno);
+	}
 
 	return 0;
 }
@@ -309,10 +337,19 @@ void *norec_tx_malloc(size_t size, int zero)
 
 	if (zero)
 		memset(tmp, 0, size);
+
+	struct tx_vec_entry e = {
+		.addr = tmp
+	};
+	if (tx_vector_append(tx->alloc_list, &e) < 0) {
+		free(tmp);
+		goto err_abort;
+	}
 	
 	return tmp;
 
 err_abort:
+	DEBUGLOG("tx_malloc failed");
 	_tx_abort(err);
 	return NULL;
 }
@@ -390,6 +427,7 @@ int norec_tx_end(void)
 	int ret = tx->last_errnum;
 	if (tx_stack_isempty(tx->entries)) {
 		tx->stage = TX_STAGE_NONE;
+		tx_vector_empty_unsafe(tx->alloc_list);
 		tx_vector_empty(tx->free_list);
 		tx_vector_empty(tx->write_set);
 		tx_vector_empty(tx->read_set);

@@ -11,11 +11,11 @@ extern "C" {
 #ifdef DEBUG
 #define DEBUGLOG(fmt, ...) do { fprintf(stderr, "%s:%d:%s(): " fmt "\n", __FILE__, __LINE__, __func__, __VA_ARGS__); } while(0)
 #define DEBUGPRINT(fmt, ...) do { fprintf(stderr, fmt "\n", __VA_ARGS__); } while(0)
-// #define DEBUGABORT() do { fprintf(stderr, "%s(): TX aborted: %s\n", __func__, pmemobj_errormsg()); } while(0)
+#define DEBUGABORT() do { fprintf(stderr, "%s(): TX aborted\n", __func__); } while(0)
 #else
 #define DEBUGLOG(fmt, ...) _MNOOP
 #define DEBUGPRINT(fmt, ...) _MNOOP
-// #define DEBUGABORT() _MNOOP
+#define DEBUGABORT() _MNOOP
 #endif
 
 #define IS_EVEN(val) (((val) & 1) == 0)

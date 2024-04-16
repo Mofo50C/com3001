@@ -10,6 +10,7 @@ struct tx_meta {
 	enum tx_stage stage;
 	struct tx_stack *entries;
 	struct tx_vec *free_list;
+	struct tx_vec *alloc_list;
 	pid_t tid;
 	int loc;
 	int level;
@@ -56,6 +57,13 @@ void _tx_abort(int errnum)
 		tx->stage = TX_STAGE_ONABORT;
 	
 	struct tx_data *txd = tx->entries->head;
+	if (txd->next == NULL && tx->level == 0) {
+		int i;
+		for (i = 0; i < tx->alloc_list->length; i++) {
+			void **addr = &tx->alloc_list->addrs[i];
+			free(addr);
+		}
+	}
 
 	tx->last_errnum = errnum;
 	errno = errnum;
@@ -80,16 +88,24 @@ void tml_thread_enter(void)
 {
 	struct tx_meta *tx = get_tx_meta();
 	tx->tid = gettid();
-	if (tx_vector_init(&tx->free_list)) {
-		DEBUGLOG("failed to init free list");
-		abort();
-	}
+	if (tx_vector_init(&tx->free_list))
+		goto err_abort;
+
+	if (tx_vector_init(&tx->alloc_list))
+		goto err_abort;
+	
+err_abort:
+	DEBUGLOG("failed to init free list");
+	abort();
 }
 
 void tml_thread_exit(void) {
 	struct tx_meta *tx = get_tx_meta();
 	tx_vector_empty(tx->free_list);
 	tx_vector_destroy(&tx->free_list);
+
+	tx_vector_empty(tx->alloc_list);
+	tx_vector_destroy(&tx->alloc_list);
 }
 
 int tml_tx_begin(jmp_buf env)
@@ -109,7 +125,7 @@ int tml_tx_begin(jmp_buf env)
 	} else if (stage == TX_STAGE_WORK) {
 		tx->level++;
 	} else {
-		DEBUGLOG("called begin at wrong stage");
+		DEBUGLOG("tx_begin called at wrong stage");
 		abort();
 	}
 
@@ -136,6 +152,7 @@ int tml_tx_begin(jmp_buf env)
 	return 0;
 
 err_abort:
+	DEBUGLOG("tx failed to start");
 	if (tx->stage == TX_STAGE_WORK)
 		_tx_abort(err);
 	else
@@ -180,8 +197,10 @@ int tml_tx_free(void *ptr)
 			return 0;
 	}
 
-	if (tx_vector_append(tx->free_list, ptr))
+	if (tx_vector_append(tx->free_list, ptr)) {
+		DEBUGLOG("tx_free failed");
 		_tx_abort(errno);
+	}
 
 	return 0;
 }
@@ -200,10 +219,16 @@ void *tml_tx_malloc(size_t size, int zero)
 
 	if (zero)
 		memset(tmp, 0, size);
+
+	if (tx_vector_append(tx->alloc_list, tmp)) {
+		free(tmp);
+		goto err_abort;
+	}
 	
 	return tmp;
 
 err_abort:
+	DEBUGLOG("tx_malloc failed");
 	_tx_abort(err);
 	return NULL;
 }
@@ -268,6 +293,7 @@ int tml_tx_end(void)
 	int ret = tx->last_errnum;
 	if (tx_stack_isempty(tx->entries)) {
 		tx->stage = TX_STAGE_NONE;
+		tx_vector_empty(tx->alloc_list);
 		tx_vector_empty(tx->free_list);
 	} else {
 		tx->stage = TX_STAGE_WORK;

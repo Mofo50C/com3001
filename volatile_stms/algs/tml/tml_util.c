@@ -114,17 +114,16 @@ int tx_vector_resize(struct tx_vec *vec)
 	return 0;
 }
 
-int tx_vector_append(struct tx_vec *vec, void *entry)
+int tx_vector_append(struct tx_vec *vec, void *addr)
 {
 	if (vec->length >= vec->capacity) {
 		if (tx_vector_resize(vec)) 
 			return 1;
 	}
 
-	vec->addrs[vec->length++] = entry;
+	vec->addrs[vec->length++] = addr;
 	return 0;
 }
-
 void tx_vector_destroy(struct tx_vec **vecp)
 {
 	struct tx_vec *vec = *vecp;

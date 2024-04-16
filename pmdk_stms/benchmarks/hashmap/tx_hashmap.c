@@ -6,13 +6,19 @@
 #include "stm.h"
 
 #define MAX_LOAD_FACTOR 1
-#define MAX_GROWS 8
-#define INIT_CAP TABLE_PRIMES[0]
-#define HASH_SEED 69
+#define MAX_GROWS 27
 
+#if defined(HASHMAP_RESIZABLE)
+#define INIT_CAP TABLE_PRIMES[0]
+#else
+#define INIT_CAP TABLE_PRIMES[2]
+#endif
+
+#define HASH_SEED 69
 #define GET_HASH _hash_int
 
-static int TABLE_PRIMES[] = {11, 23, 53, 97, 193, 389, 769, 1543, 3079};
+static int TABLE_PRIMES[] = {11, 23, 53, 97, 193, 389, 769, 1543, 3079, 6151, 12289, 24593, 49157, 98317, 
+	196613, 393241, 786433, 1572869, 3145739, 6291469, 12582917, 25165843, 50331653, 100663319, 201326611, 402653189, 805306457, 1610612741};
 
 uint64_t _hash_str(const void *item)
 {
@@ -28,34 +34,17 @@ int hashmap_new(TOID(struct hashmap) *h)
 {
 	int ret = 0;
 	STM_BEGIN() {
-		STM_WRITE_DIRECT(h, STM_ZNEW(struct hashmap), sizeof(*h));
-	} STM_ONABORT {
-		ret = 1;
-	} STM_END
-
-	if (ret) return ret;
-
-	size_t nbuckets = INIT_CAP;
-	size_t sz = sizeof(struct buckets) + sizeof(TOID(struct entry)) * nbuckets;
-	TOID(struct hashmap) map = *h;
-
-	ret = 0;
-	STM_BEGIN() {
+		TOID(struct hashmap) map = STM_ZNEW(struct hashmap);
+		STM_WRITE_DIRECT(h, map, sizeof(*h));
+		size_t nbuckets = INIT_CAP;
+		size_t sz = sizeof(struct buckets) + sizeof(TOID(struct entry)) * nbuckets;
 		TOID(struct buckets) buckets = STM_ZALLOC(struct buckets, sz);
 		D_RW(buckets)->num_buckets = nbuckets;
 		STM_WRITE(D_RW(map)->capacity, nbuckets);
 		STM_WRITE(D_RW(map)->buckets, buckets);
 	} STM_ONABORT {
+		DEBUGABORT();
 		ret = 1;
-	} STM_END
-	
-	if (!ret) return 0;
-
-	STM_BEGIN() {
-		STM_FREE(map);
-		STM_WRITE_DIRECT(h, TOID_NULL(struct hashmap), sizeof(*h));
-	} STM_ONABORT {
-		ret = -1;
 	} STM_END
 
 	return ret;
@@ -152,9 +141,9 @@ int hashmap_put(TOID(struct hashmap) h, uint64_t key, PMEMoid value, PMEMoid *re
 		*retval = OID_NULL;
 		return ret;
 	}
-
+#if defined(HASHMAP_RESIZABLE)
 	_hashmap_resize(h);
-
+#endif
 	return found;
 }
 

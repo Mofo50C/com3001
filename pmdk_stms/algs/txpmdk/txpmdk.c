@@ -1,3 +1,6 @@
+#define _GNU_SOURCE
+#include <unistd.h>
+
 #include <stdbool.h>
 #include <stdatomic.h>
 #include "txpmdk_base.h"

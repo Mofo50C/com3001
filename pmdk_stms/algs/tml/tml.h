@@ -32,7 +32,7 @@ tml_thread_exit()
 #define TML_READ_CHECK tml_tx_read()
 
 #define TML_WRITE(var, val)\
-	TML_WRITE_DIRECT(&(var), val)
+	TML_WRITE_DIRECT(&(var), val, sizeof(val))
 
 #define TML_WRITE_DIRECT(p, value, sz) ({\
 	TML_WRITE_CHECK;\

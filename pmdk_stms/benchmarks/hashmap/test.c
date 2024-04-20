@@ -1,9 +1,12 @@
+#define _GNU_SOURCE
+#include <unistd.h>
+
 #include <libpmemobj.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <pthread.h>
 
-#include "tx_hashmap.h"
+#include "tm_hashmap.h"
 
 #define RAII
 #include "stm.h" 
@@ -35,23 +38,7 @@ int val_constr(PMEMobjpool *pop, void *ptr, void *arg)
 	return 0;
 }
 
-int print_val(uint64_t key, PMEMoid value, void *arg)
-{
-	struct hash_val *val = (struct hash_val *)pmemobj_direct(value); 
-	printf("\t%d => %d\n", key, val->val);
-
-	return 0;
-}
-
-int print_hashmap(TOID(struct hashmap) h)
-{
-	printf("{\n");
-	hashmap_foreach(h, print_val, NULL);
-	printf("}\n");
-}
-
-
-TOID(struct hash_val) new_hash_val(int val)
+TOID(struct hash_val) hash_val_new(int val)
 {
 	TOID(struct hash_val) myval;
 	int mynum = val;
@@ -60,38 +47,89 @@ TOID(struct hash_val) new_hash_val(int val)
 	return myval;
 }
 
-void insert_value(TOID(struct hashmap) h, uint64_t key, int val)
+int print_val(uint64_t key, PMEMoid value, void *arg)
+{
+	struct hash_val *val = (struct hash_val *)pmemobj_direct(value); 
+	printf("\t%d => %d\n", key, val->val);
+
+	return 0;
+}
+
+void map_print(TOID(struct hashmap) h)
+{
+	printf("{\n");
+	hashmap_foreach(h, print_val, NULL);
+	printf("}\n");
+}
+
+
+void map_insert(TOID(struct hashmap) h, uint64_t key, int val)
 {	
 	PMEMoid oldval;
-	int res = hashmap_put(h, key, new_hash_val(val).oid, &oldval);
+	TOID(struct hash_val) hval = hash_val_new(val);
+	int res = hashmap_put_tm(h, key, hval.oid, &oldval);
+	pid_t pid = gettid();
 	switch (res)
 	{
 	case 1:
 		pmemobj_free(&oldval);
-		printf("update %d => %d\n", key, val);
+		printf("[%d] update %d => %d\n", pid, key, val);
 		break;
 	case 0:
-		printf("insert %d => %d\n", key, val);
+		printf("[%d] insert %d => %d\n", pid, key, val);
 		break;
 	default:
-		printf("error putting %d\n", key);
+		pmemobj_free(&hval.oid);
+		printf("[%d] error putting %d => %d\n", pid, key, val);
 		break;
 	}
 }
 
-void read_value(TOID(struct hashmap) h, uint64_t key)
+void map_read(TOID(struct hashmap) h, uint64_t key)
 {
-	PMEMoid ret = hashmap_get(h, key, NULL);
+	PMEMoid ret = hashmap_get_tm(h, key, NULL);
 	if (!OID_IS_NULL(ret))
 		printf("get %d: %d\n", key, ((struct hash_val *)pmemobj_direct(ret))->val);
 }
 
+struct worker_args {
+	int idx;
+	int val;
+	int key;
+	TOID(struct hashmap) map;
+};
+
+void *map_worker(void *arg)
+{
+	struct worker_args args = *(struct worker_args *)arg;
+	DEBUGPRINT("th%d with pid %d\n", args.idx, tid);
+	STM_TH_ENTER(pop);
+
+	map_insert(args.map, args.key, args.val);
+
+	STM_TH_EXIT();
+
+	return NULL;
+}
+
 int main(int argc, char const *argv[])
 {
+	if (argc != 2) {
+		printf("usage: %s <num_threads>\n", argv[0]);
+		return 1;
+	}
+
+	int num_threads = atoi(argv[1]);
+
+	if (num_threads < 1) {
+		printf("<num_accs> must be at least 1\n");
+		return 1;
+	}
+
 	const char *path = "/mnt/pmem/hashmap_test";
 	if (access(path, F_OK) != 0) {
 		if ((pop = pmemobj_create(path, POBJ_LAYOUT_NAME(hashmap_test),
-			PMEMOBJ_MIN_POOL, 0666)) == NULL) {
+			PMEMOBJ_MIN_POOL * 4, 0666)) == NULL) {
 			perror("failed to create pool\n");
 			return 1;
 		}
@@ -103,32 +141,41 @@ int main(int argc, char const *argv[])
 		}
 	}
 
+	pthread_t workers[num_threads];
+	struct worker_args arg_data[num_threads];
+
     TOID(struct root) root = POBJ_ROOT(pop, struct root);
     struct root *rootp = D_RW(root);
-
-	STM_TH_ENTER(pop);
-    
-	if (hashmap_new(&rootp->map))
+	
+	if (hashmap_new(pop, &rootp->map)) {
 		printf("error in new...\n");
+		pmemobj_close(pop);
+		return 1;
+	}
 
 	TOID(struct hashmap) map = rootp->map;
 
-	insert_value(map, 3, 21);
-	read_value(map, 3);
-	
-	print_hashmap(map);
+	srand(time(NULL));
+	int i;
+	for (i = 0; i < num_threads; i++) {
+		struct worker_args *args = &arg_data[i];
+		args->map = map;
+		args->val = rand() % 1000;
+		args->key = rand() % 1000;
+		args->idx = i + 1;
 
-	insert_value(map, 4, 69);
-	insert_value(map, 3, 35);
-	
-	print_hashmap(map);
+		pthread_create(&workers[i], NULL, map_worker, args);
+	}
 
-	if (hashmap_destroy(&rootp->map))
+	for (i = 0; i < num_threads; i++) {
+		pthread_join(workers[i], NULL);
+	}
+
+	map_print(map);
+
+	if (hashmap_destroy(pop, &rootp->map))
 		printf("error in destroy...\n");
 
-	STM_TH_EXIT();
-
-	pmemobj_close(pop);
 
     return 0;
 }

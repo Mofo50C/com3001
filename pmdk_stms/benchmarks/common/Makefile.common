@@ -1,0 +1,9 @@
+include ../../../common/Makefile.common
+
+.PHONY: clean-algs
+
+clean-algs: clean
+	$(MAKE) -C $(ALGS_DIR) clean
+
+clean::
+	rm -f test-*

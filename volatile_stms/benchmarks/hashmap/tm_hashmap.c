@@ -1,6 +1,12 @@
+#define _GNU_SOURCE
+#include <unistd.h>
+
 #include <stdlib.h>
 #include <stdint.h>
-#include "tx_hashmap.h"
+#include <string.h>
+#include "tm_hashmap.h"
+#include "util.h"
+#include "xxhash.h"
 
 #define RAII
 #include "stm.h"
@@ -32,22 +38,52 @@ uint64_t _hash_int(const void *item)
 
 int hashmap_new(struct hashmap **h)
 {
-	int ret = 0;
-	STM_BEGIN() {
-		struct hashmap *map = STM_ZNEW(struct hashmap);
-		STM_WRITE_DIRECT(h, map, sizeof(*h));
-		size_t nbuckets = INIT_CAP;
-		size_t sz = sizeof(struct buckets) + sizeof(struct entry *) * nbuckets;
-		struct buckets *buckets = STM_ZALLOC(sz);
-		buckets->num_buckets = nbuckets;
-		STM_WRITE(map->capacity, nbuckets);
-		STM_WRITE(map->buckets, buckets);
-	} STM_ONABORT {
-		DEBUGABORT();
-		ret = 1;
-	} STM_END
+	struct hashmap *map = malloc(sizeof(struct hashmap));
+	if (map == NULL)
+		goto err_ret;
 
-	return ret;
+	*h = map;
+	size_t nbuckets = INIT_CAP;
+	size_t sz = sizeof(struct buckets) + sizeof(struct entry *) * nbuckets;
+	struct buckets *buckets = malloc(sz);
+	if (buckets ==  NULL) {
+		free(map);
+		goto err_ret;
+	}
+
+	buckets->num_buckets = nbuckets;
+	map->capacity = nbuckets;
+	map->buckets = buckets;
+
+	return 0;
+
+err_ret:
+	return 1;
+}
+
+int hashmap_new_cap(struct hashmap **h, size_t capacity)
+{
+	struct hashmap *map = malloc(sizeof(struct hashmap));
+	if (map == NULL)
+		goto err_ret;
+
+	*h = map;
+	size_t nbuckets = capacity;
+	size_t sz = sizeof(struct buckets) + sizeof(struct entry *) * nbuckets;
+	struct buckets *buckets = malloc(sz);
+	if (buckets ==  NULL) {
+		free(map);
+		goto err_ret;
+	}
+
+	buckets->num_buckets = nbuckets;
+	map->capacity = nbuckets;
+	map->buckets = buckets;
+
+	return 0;
+
+err_ret:
+	return 1;
 }
 
 struct entry *_hashmap_new_entry(uint64_t key, uint64_t hash, void *value)
@@ -98,6 +134,7 @@ int _hashmap_resize(struct hashmap *h)
 		STM_WRITE(h->buckets, new_buckets);
 end_return:	;
 	} STM_ONABORT {
+		DEBUGABORT();
 		ret = -1;
 	} STM_END
 
@@ -107,7 +144,7 @@ end_return:	;
 
 /* retval is optional pointer to capture old value */
 /* return = -1: error, 0: inserted, 1: updated */
-int hashmap_put(struct hashmap *h, uint64_t key, void *value, void **retval)
+int hashmap_put_tm(struct hashmap *h, uint64_t key, void *value, void **retval)
 {
 	uint64_t key_hash = GET_HASH(&key);
 
@@ -122,7 +159,9 @@ int hashmap_put(struct hashmap *h, uint64_t key, void *value, void **retval)
 			STM_WRITE(buckets->arr[b], new_entry);
 			STM_WRITE(h->length, (STM_READ(h->length) + 1));
 		} else {
+			struct entry *prev;
 			do {
+				prev = entry;
 				if (STM_READ(entry->key) == key) {
 					if (retval)
 						*retval = STM_READ(entry->value);
@@ -134,11 +173,12 @@ int hashmap_put(struct hashmap *h, uint64_t key, void *value, void **retval)
 
 			if (!found) {
 				struct entry *new_entry = _hashmap_new_entry(key, key_hash, value);
-				STM_WRITE(entry->next, new_entry);
+				STM_WRITE(prev->next, new_entry);
 				STM_WRITE(h->length, (STM_READ(h->length) + 1));
 			}
 		}
 	} STM_ONABORT {
+		DEBUGABORT();
 		ret = -1;
 	} STM_END
 	
@@ -152,7 +192,7 @@ int hashmap_put(struct hashmap *h, uint64_t key, void *value, void **retval)
 	return found;
 }
 
-void *hashmap_get(struct hashmap *h, uint64_t key, int *err)
+void *hashmap_get_tm(struct hashmap *h, uint64_t key, int *err)
 {
 	uint64_t key_hash = GET_HASH(&key);
 	void *retval = NULL;
@@ -161,8 +201,8 @@ void *hashmap_get(struct hashmap *h, uint64_t key, int *err)
 	STM_BEGIN() {
 		int bucket = key_hash % STM_READ(h->capacity);
 		struct buckets *buckets = STM_READ(h->buckets);
-		struct entry *entry;
 
+		struct entry *entry;
 		for (entry = STM_READ(buckets->arr[bucket]); 
 			entry != NULL;
 			entry = STM_READ(entry->next)) 
@@ -173,6 +213,7 @@ void *hashmap_get(struct hashmap *h, uint64_t key, int *err)
 			}
 		}
 	} STM_ONABORT {
+		DEBUGABORT();
 		ret = 1;
 	} STM_END
 	
@@ -184,7 +225,7 @@ void *hashmap_get(struct hashmap *h, uint64_t key, int *err)
 	return retval;
 }
 
-void *hashmap_delete(struct hashmap *h, uint64_t key, int *err)
+void *hashmap_delete_tm(struct hashmap *h, uint64_t key, int *err)
 {
 	uint64_t key_hash = GET_HASH(&key);
 
@@ -201,7 +242,7 @@ void *hashmap_delete(struct hashmap *h, uint64_t key, int *err)
 		if (STM_READ(head->key) == key) {
 			found = 1;
 			oldval = STM_READ(head->value);
-			STM_WRITE(buckets->arr[b], NULL);
+			STM_WRITE(buckets->arr[b], STM_READ(head->next));
 			STM_FREE(head);
 			goto end;
 		}
@@ -224,6 +265,7 @@ void *hashmap_delete(struct hashmap *h, uint64_t key, int *err)
 		}
 end:	;
 	} STM_ONABORT {
+		DEBUGABORT();
 		ret = 1;
 	} STM_END
 
@@ -240,7 +282,7 @@ stm_err:
 	return NULL;
 }
 
-int hashmap_contains(struct hashmap *h, uint64_t key)
+int hashmap_contains_tm(struct hashmap *h, uint64_t key)
 {
 	uint64_t key_hash = GET_HASH(&key);
 
@@ -248,8 +290,8 @@ int hashmap_contains(struct hashmap *h, uint64_t key)
 	STM_BEGIN() {
 		int bucket = key_hash % STM_READ(h->capacity);
 		struct buckets *buckets = STM_READ(h->buckets);
-		struct entry *entry;
 
+		struct entry *entry;
 		for (entry = STM_READ(buckets->arr[bucket]); 
 			entry != NULL;
 			entry = STM_READ(entry->next)) 
@@ -260,6 +302,7 @@ int hashmap_contains(struct hashmap *h, uint64_t key)
 			}
 		}
 	} STM_ONABORT {
+		DEBUGABORT();
 		ret = -1;
 	} STM_END
 	
@@ -268,6 +311,25 @@ int hashmap_contains(struct hashmap *h, uint64_t key)
 
 int hashmap_foreach(struct hashmap *h, int (*cb)(uint64_t key, void *value, void *arg), void *arg)
 {
+	struct buckets *buckets = h->buckets;
+	struct entry *var;
+
+	for (size_t i = 0; i < buckets->num_buckets; i++)  {
+		for (var = buckets->arr[i];
+			var != NULL; 
+			var = var->next) 
+		{
+			if(cb(var->key, var->value, arg))
+				return 1;
+		}
+
+	}
+
+	return 0;
+}
+
+int hashmap_foreach_tm(struct hashmap *h, int (*cb)(uint64_t key, void *value, void *arg), void *arg)
+{
 	int err = 0;
 	int ret = 0;
 	STM_BEGIN() {
@@ -275,21 +337,18 @@ int hashmap_foreach(struct hashmap *h, int (*cb)(uint64_t key, void *value, void
 		struct entry *var;
 
 		for (size_t i = 0; i < STM_READ(buckets->num_buckets); i++)  {
-			if (STM_READ(buckets->arr[i]) == NULL)
-				continue;
-
 			for (var = STM_READ(buckets->arr[i]); 
 				var != NULL; 
 				var = STM_READ(var->next)) 
 			{
 				ret = cb(STM_READ(var->key), STM_READ(var->value), arg);
 				if (ret)
-					goto outer;
+					goto end;
 			}
-
 		}
-outer:	;
+end:	;
 	} STM_ONABORT {
+		DEBUGABORT();
 		err = 1;
 	} STM_END
 
@@ -299,54 +358,38 @@ outer:	;
 	return ret;
 }
 
-
-int _hashmap_destroy_entries(struct hashmap *h)
+void _hashmap_destroy_entries(struct hashmap *h)
 {
-	int ret = 0;
-	STM_BEGIN() {		
-		if (STM_READ(h->length) > 0) {
-			int i;
-			struct entry *head;
-			struct buckets *buckets = STM_READ(h->buckets);
-			for (i = 0; i < STM_READ(h->capacity); i++) {
-				head = STM_READ(buckets->arr[i]);
-				if (head == NULL) 
-					continue;
+	if (h->length > 0) {
+		int i;
+		struct entry *head;
+		struct buckets *buckets = h->buckets;
+		for (i = 0; i < h->capacity; i++) {
+			head = buckets->arr[i];
+			if (head == NULL) 
+				continue;
 
-				struct entry *e;
-				while ((e = STM_READ(head->next)) != NULL) {
-					STM_WRITE(buckets->arr[i], e);
-					free(STM_READ(head->value));
-					STM_FREE(head);
-					head = e;
-				}
-				STM_FREE(head);
-				STM_WRITE(buckets->arr[i], NULL);
+			struct entry *e;
+			while ((e = head->next) != NULL) {
+				buckets->arr[i] = e;
+				free(head->value);
+				free(head);
+				head = e;
 			}
+			free(head);
+			buckets->arr[i] = NULL;
 		}
-	} STM_ONABORT {
-		ret = 1;
-	} STM_END
-
-	return ret;
+	}
 }
 
-int hashmap_destroy(struct hashmap **h)
+void hashmap_destroy(struct hashmap **h)
 {
 	struct hashmap *map = *h;
-	int ret = _hashmap_destroy_entries(map);
+	_hashmap_destroy_entries(map);
 
-	if (ret) return ret;
-
-	STM_BEGIN() {
-		STM_FREE(STM_READ(map->buckets));
-		STM_WRITE(map->buckets, NULL);
-		STM_FREE(map);
-		STM_WRITE_DIRECT(h, NULL, sizeof(*h));
-	} STM_ONABORT {
-		ret = 1;
-	} STM_END
-
-	return ret;
+	free(map->buckets);
+	map->buckets = NULL;
+	free(map);
+	*h = NULL;
 }
 

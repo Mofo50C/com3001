@@ -1,3 +1,6 @@
+#define _GNU_SOURCE
+#include <unistd.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdatomic.h>
@@ -57,7 +60,13 @@ void norec_rdset_add(void *pdirect, void *src, size_t size)
 {
 	struct tx_meta *tx = get_tx_meta();
 
+	int err = 0;
 	void *pval = malloc(size);
+	if (pval == NULL) {
+		err = errno;
+		goto err_abort;
+	}
+
 	memcpy(pval, src, size);
 
 	struct tx_vec_entry e = {
@@ -65,15 +74,33 @@ void norec_rdset_add(void *pdirect, void *src, size_t size)
 		.pval = pval,
 		.size = size
 	};
-	tx_vector_append(tx->read_set, &e);
+	if (tx_vector_append(tx->read_set, &e) < 0) {
+		err = errno;
+		goto err_clean;
+	}
+	
+	return;
+
+err_clean:
+	free(pval);
+err_abort:
+	pmemobj_tx_abort(err);
 }
 
-void norec_tx_write(void *pdirect_field, size_t size, void *pval)
+void norec_tx_write(void *pdirect_field, size_t size, void *buf)
 {
 	struct tx_meta *tx = get_tx_meta();
 
-	uintptr_t field_key = (uintptr_t)pdirect_field;
+	int err = 0;
+	void *pval = malloc(size);
+	if (pval == NULL) {
+		err = errno;
+		goto err_abort;
+	}
 
+	memcpy(pval, buf, size);
+
+	uintptr_t field_key = (uintptr_t)pdirect_field;
 	struct tx_hash_entry *entry;
 	if ((entry = tx_hash_get(tx->wrset_lookup, field_key))) {
 		struct tx_vec_entry *v = &tx->write_set->arr[entry->index];
@@ -87,8 +114,24 @@ void norec_tx_write(void *pdirect_field, size_t size, void *pval)
 			.addr = pdirect_field
 		};
 		size_t idx = tx_vector_append(tx->write_set, &e);
-		tx_hash_put(tx->wrset_lookup, field_key, idx);
+		if (idx < 0) {
+			err = errno;
+			goto err_clean;
+		}
+
+		if (tx_hash_put(tx->wrset_lookup, field_key, idx) < 0) {
+			err = errno;
+			goto err_clean;
+		}
 	}
+
+	return;
+
+err_clean:
+	free(pval);
+err_abort:
+	DEBUGLOG("failed to append to wrset");
+	pmemobj_tx_abort(err);
 }
 
 void norec_validate(void)
@@ -217,9 +260,8 @@ void norec_tx_commit(void)
 
 	DEBUGPRINT("[%d] committing...", tx->tid);
 	pmemobj_tx_commit();
-	DEBUGPRINT("[%d] after commit", tx->tid);
 
-	glb = tx->loc + 2;
+	// glb = tx->loc + 2;
 }
 
 void norec_tx_process(void)
@@ -242,6 +284,10 @@ int norec_tx_end(void)
 		tx_vector_empty(tx->write_set);
 		tx_vector_empty(tx->read_set);
 		tx_hash_empty(tx->wrset_lookup);
+		
+		/* release the lock on end (commit or abort) except when retrying */
+		if (!tx->retry)
+			glb = tx->loc + 2;
 	}
 
 	return pmemobj_tx_end();

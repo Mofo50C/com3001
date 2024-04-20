@@ -5,7 +5,7 @@
 #include <libpmemobj.h>
 
 #define RAII
-#include "stm.h"
+#include <stm.h>
 
 POBJ_LAYOUT_BEGIN(simple_test);
 POBJ_LAYOUT_ROOT(simple_test, struct root);
@@ -13,8 +13,8 @@ POBJ_LAYOUT_TOID(simple_test, struct accounts);
 POBJ_LAYOUT_END(simple_test);
 
 struct accounts {
-	int shared_acc;
-	int other_accs[];
+	int balance1;
+	int balance2;
 };
 
 struct root {
@@ -24,31 +24,28 @@ struct root {
 static PMEMobjpool *pop;
 
 struct transfer_args {
+	int idx;
 	int price;
-	int acc_index;
 };
 
-void *process_transfer(void *arg)
+void *process_simple(void *arg)
 {
 	struct transfer_args *args = (struct transfer_args *)arg;
 	int price = args->price;
-	int acc_index = args->acc_index;
 
-
-	pid_t tid = gettid();	
-	printf("p%d with tid %d\n", acc_index + 1, tid);
 	TOID(struct root) root = POBJ_ROOT(pop, struct root);
 	struct accounts *accsp = D_RW(D_RW(root)->accs);
 	
 	STM_TH_ENTER(pop);
 
 	STM_BEGIN() {
-		int shared, other;
-		shared = STM_READ(accsp->shared_acc);
-		int *pother = (accsp->other_accs + acc_index);
-		other = STM_READ_DIRECT(pother, sizeof(int));
-		STM_WRITE(accsp->shared_acc, (shared + price));
-		STM_WRITE_DIRECT(pother, (other - price), sizeof(int));
+		int balance1 = STM_READ(accsp->balance1);
+		int balance2 = STM_READ(accsp->balance2);
+		sleep(1);
+		STM_WRITE(accsp->balance1, (balance1 + price));
+		STM_WRITE(accsp->balance2, (balance2 - price));
+	} STM_ONABORT {
+		DEBUGABORT();
 	} STM_END
 
 	STM_TH_EXIT();
@@ -58,22 +55,23 @@ void *process_transfer(void *arg)
 
 int main(int argc, char const *argv[])
 {
-	if (argc != 4) {
-		printf("usage: %s <num_accs> <init_balance> <price>\n", argv[0]);
+	if (argc != 5) {
+		printf("usage: %s <num_threads> <balance1> <balance2> <price>\n", argv[0]);
 		return 1;
 	}
 
-	int num_accs = atoi(argv[1]);
-	int init_balance = atoi(argv[2]);
-	int price = atoi(argv[3]);
+	int num_threads = atoi(argv[1]);
+	int balance1 = atoi(argv[2]);
+	int balance2 = atoi(argv[3]);
+	int price = atoi(argv[4]);
 
-	if (num_accs < 1) {
-		printf("<num_accs> must be at least 1\n");
+	if (num_threads < 1) {
+		printf("<num_threads> must be at least 1\n");
 		return 1;
 	}
 
-	if (init_balance < price) {
-		printf("<init_balance> should be greater than or equal to the <price>\n");
+	if (balance2 - num_threads * price < 0) {
+		printf("<balance2> must be equal to at least <num_threads> * <price>\n");
 		return 1;
 	}
 
@@ -92,51 +90,51 @@ int main(int argc, char const *argv[])
 		}
 	}
 
-	int i;
-	int balances[num_accs];
-	for (i = 0; i < num_accs; i++) {
-		balances[i] = init_balance;
-	}
-
 	TOID(struct root) root = POBJ_ROOT(pop, struct root);
 	struct root *rootp = D_RW(root);
 
+	int err = 0;
 	TX_BEGIN(pop) {
-		TOID(struct accounts) accs = TX_ZALLOC(struct accounts, sizeof(struct accounts) + sizeof(int[num_accs]));
-		D_RW(accs)->shared_acc = init_balance;
-		memcpy(D_RW(accs)->other_accs, balances, sizeof(int[num_accs]));
+		TOID(struct accounts) accs = TX_ZALLOC(struct accounts, sizeof(struct accounts));
+		D_RW(accs)->balance1 = balance1;
+		D_RW(accs)->balance2 = balance2;
 		TX_ADD(root);
 		D_RW(root)->accs = accs;
+	} TX_ONABORT {
+		err = 1;
 	} TX_END
 
-	int total = (num_accs + 1) * init_balance;
-	struct accounts *accsp = D_RW(rootp->accs);
-
-	printf("Shared Account before: %d\n", accsp->shared_acc);
-	printf("Total before: %d\n", total);
-
-	pthread_t workers[num_accs];
-	struct transfer_args arg_data[num_accs];
-
-	for (i = 0; i < num_accs; i++) {
-		struct transfer_args *args = &arg_data[i];
-		args->acc_index = i;
-		args->price = price;
-		pthread_create(&workers[i], NULL, process_transfer, args);
+	if (err) {
+		pmemobj_close(pop);
+		return 1;
 	}
 
-	for (i = 0; i < num_accs; i++) {
+	struct accounts *accsp = D_RW(rootp->accs);
+
+	printf("Balance 1 before: %d\n", accsp->balance1);
+	printf("Balance 2 before: %d\n", accsp->balance2);
+
+	pthread_t workers[num_threads];
+	struct transfer_args arg_data[num_threads];
+
+	int i;
+	for (i = 0; i < num_threads; i++) {
+		struct transfer_args *args = &arg_data[i];
+		args->idx = i;
+		args->price = price;
+		pthread_create(&workers[i], NULL, process_simple, args);
+	}
+
+	for (i = 0; i < num_threads; i++) {
 		pthread_join(workers[i], NULL);
 	}
 
-	total = accsp->shared_acc;
-	for (i = 0; i < num_accs; i++) {
-		total += accsp->other_accs[i];
-	}
-	int shared = accsp->shared_acc;
+	printf("Balance 1 after: %d\n", accsp->balance1);
+	printf("Balance 2 after: %d\n", accsp->balance2);
 
-	printf("Shared Account after: %d\n", shared);
-	printf("Total after: %d\n", total);
+	if ((accsp->balance1 != balance1 + price * num_threads) && (accsp->balance2 == balance2 - price * num_threads)) {
+		printf("TX isolation failed\n");
+	}
 
 	TX_BEGIN(pop) {
 		TX_ADD(root);
@@ -147,10 +145,5 @@ int main(int argc, char const *argv[])
 	} TX_END;
 
 	pmemobj_close(pop);
-	
-	if ((shared != (init_balance + price * num_accs)) || (total != (num_accs + 1) * init_balance)) {
-		printf("TX isolation failed\n");
-	}
-
 	return 0;
 }

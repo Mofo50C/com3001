@@ -1,3 +1,6 @@
+#define _GNU_SOURCE
+#include <unistd.h>
+
 #include <stdbool.h>
 #include <stdatomic.h>
 #include "tml_base.h"
@@ -79,12 +82,12 @@ int tml_tx_begin(jmp_buf env)
 void tml_tx_commit(void)
 {
 	pmemobj_tx_commit();
-	struct tx_meta *tx = get_tx_meta();
-	if (tx->level > 0) return;
+	// struct tx_meta *tx = get_tx_meta();
+	// if (tx->level > 0) return;
 
-	if (IS_ODD(tx->loc)) {
-		glb = tx->loc + 1;
-	}
+	// if (IS_ODD(tx->loc)) {
+	// 	glb = tx->loc + 1;
+	// }
 }
 
 void tml_tx_process(void)
@@ -103,6 +106,10 @@ int tml_tx_end(void)
 	struct tx_meta *tx = get_tx_meta();
 	if (tx->level > 0) {
 		tx->level--;
+	} else if (!tx->retry) {
+		/* release the lock on end (commit or abort) except when retrying */
+		if (IS_ODD(tx->loc))
+			glb = tx->loc + 1;
 	}
 	return pmemobj_tx_end();
 }

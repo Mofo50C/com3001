@@ -43,15 +43,17 @@ int tx_vector_resize(struct tx_vec *vec)
 	return 0;
 }
 
+/* returns -1 on error */
 int tx_vector_append(struct tx_vec *vec, struct tx_vec_entry *entry)
 {
 	if (vec->length >= vec->capacity) {
 		if (tx_vector_resize(vec)) 
-			return 1;
+			return -1;
 	}
 
-	vec->arr[vec->length++] = *entry;
-	return 0;
+	int idx = vec->length++;
+	vec->arr[idx] = *entry;
+	return idx;
 }
 
 void tx_vector_destroy(struct tx_vec **vecp)
@@ -91,6 +93,7 @@ uint64_t _hash(uintptr_t key)
 	return fnv64((uint64_t)key);
 }
 
+/* returns 1 on error */
 int tx_hash_new(struct tx_hash **hashp)
 {
 	struct tx_hash *h = malloc(sizeof(struct tx_hash));
@@ -156,13 +159,11 @@ int _tx_hash_insert(struct tx_hash *h, uintptr_t key, uint64_t hash, uint64_t va
 	return ret;
 }
 
+/* returns 1 on error */
 int tx_hash_resize(struct tx_hash *h)
 {
-	if (((float)h->length / h->capacity) < MAX_LOAD_FACTOR)
+	if ((((float)h->length / h->capacity) < MAX_LOAD_FACTOR) || (h->num_grows >= MAX_GROWS))
 		return 0;
-
-	if (h->num_grows == MAX_GROWS)
-		return 1;
 
 	int old_cap = h->capacity;
 	int new_cap = TABLE_PRIMES[++h->num_grows];
@@ -207,7 +208,7 @@ int tx_hash_insert(struct tx_hash *h, uintptr_t key, uint64_t value)
 	return ret;
 }
 
-
+/* returns -1 on error */
 int tx_hash_put(struct tx_hash *h, uintptr_t key, uint64_t value)
 {
 	uint64_t key_hash = _hash(key);

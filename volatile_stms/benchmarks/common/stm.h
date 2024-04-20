@@ -2,7 +2,7 @@
 #define STM_H 1
 
 #if defined(NOREC)
-	#include "norec.h"
+	#include <norec.h>
 
 	#define STM_TH_ENTER NOREC_ENTER
 	#define STM_TH_EXIT NOREC_EXIT
@@ -15,6 +15,7 @@
 		#define STM_END NOREC_END
 		#define STM_ONABORT NOREC_ONABORT
 		#define STM_ONCOMMIT NOREC_ONCOMMIT
+		#define STM_ONRETRY NOREC_ONRETRY
 		#define STM_FINALLY NOREC_FINALLY
 	#else
 		#define STM_BEGIN() NOREC_BEGIN() {
@@ -33,7 +34,7 @@
 	#define STM_NEW NOREC_NEW
 	#define STM_ZNEW NOREC_ZNEW
 #else
-	#include "tml.h"
+	#include <tml.h>
 
 	#define STM_TH_ENTER TML_ENTER
 	#define STM_TH_EXIT TML_EXIT

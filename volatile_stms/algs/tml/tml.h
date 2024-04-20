@@ -2,62 +2,24 @@
 #define TML_H 1
 
 #include <errno.h>
+#include "tx.h"
 #include "util.h"
 #include "tml_base.h"
 
-#define TML_BEGIN()\
-{\
-	__label__ _TX_RETRY_LABEL;\
-	jmp_buf _tx_env;\
-	enum tx_stage _stage;\
-	int _tx_errno;\
-_TX_RETRY_LABEL:\
-	if (setjmp(_tx_env)) {\
-		errno = tx_get_error();\
-	} else if ((_tx_errno = tml_tx_begin(_tx_env))) {\
-		errno = _tx_errno;\
-	}\
-	while ((_stage = tx_get_stage()) != TX_STAGE_NONE) {\
-		switch (_stage) {\
-			case TX_STAGE_WORK:
+#define _TX_BEGIN_FUNC tml_tx_begin
+#define _TX_PROCESS_FUNC tml_tx_process
+#define _TX_END_FUNC tml_tx_end
 
-#define TML_ONABORT\
-				tml_tx_process();\
-				break;\
-			case TX_STAGE_ONABORT:
+#include "tx_generic.h"
 
-#define TML_ONRETRY\
-				tml_tx_process();\
-				break;\
-			case TX_STAGE_ONRETRY:
-
-#define TML_ONCOMMIT\
-				tml_tx_process();\
-				break;\
-			case TX_STAGE_ONCOMMIT:
-
-#define TML_FINALLY\
-				tml_tx_process();\
-				break;\
-			case TX_STAGE_FINALLY:
-
-#define TML_END\
-				tml_tx_process();\
-				break;\
-			default:\
-				tml_tx_process();\
-				break;\
-		}\
-	}\
-	if ((_tx_errno = tml_tx_end())) {\
-		if (_tx_errno == -1 && tx_get_retry()) {\
-			DEBUGPRINT("[%d] retrying...", tx_get_tid());\
-			goto _TX_RETRY_LABEL;\
-		} else {\
-			errno = _tx_errno;\
-		}\
-	}\
-}
+/* define aliases for macros */
+#define TML_BEGIN _TX_BEGIN
+#define TML_END _TX_END
+#define TML_ONABORT _TX_ONABORT
+#define TML_ONCOMMIT _TX_ONCOMMIT
+#define TML_FINALLY _TX_FINALLY
+#define TML_ONRETRY _TX_ONRETRY
+/* end define aliases */
 
 #define TML_ENTER tml_thread_enter
 #define TML_EXIT tml_thread_exit
@@ -66,7 +28,7 @@ _TX_RETRY_LABEL:\
 #define TML_READ_CHECK tml_tx_read()
 
 #define TML_WRITE(var, val)\
-	TML_WRITE_DIRECT(&(var), val, sizeof(__typeof__(val)))
+	TML_WRITE_DIRECT(&(var), val, sizeof(val))
 
 #define TML_WRITE_DIRECT(p, value, sz) ({\
 	TML_WRITE_CHECK;\

@@ -1,5 +1,5 @@
-#ifndef TX_HASHMAP_H
-#define TX_HASHMAP_H 1
+#ifndef TM_HASHMAP_H
+#define TM_HASHMAP_H 1
 
 #include <stdint.h>
 #include <libpmemobj.h>
@@ -34,25 +34,29 @@ struct hashmap {
 };
 
 /* allocate new hashmap */
-int hashmap_new(TOID(struct hashmap) *h);
+int hashmap_new(PMEMobjpool *pop, TOID(struct hashmap) *h);
+
+int hashmap_new_cap(PMEMobjpool *pop, TOID(struct hashmap) *h, size_t capacity);
 
 /* inserts or updates */
-int hashmap_put(TOID(struct hashmap) h, uint64_t key, PMEMoid value, PMEMoid *retval);
+int hashmap_put_tm(TOID(struct hashmap) h, uint64_t key, PMEMoid value, PMEMoid *retval);
 
 /* get value or NULL if key is not present */
-PMEMoid hashmap_get(TOID(struct hashmap) h, uint64_t key, int *err);
+PMEMoid hashmap_get_tm(TOID(struct hashmap) h, uint64_t key, int *err);
 
 /* delete key from map */
-PMEMoid hashmap_delete(TOID(struct hashmap) h, uint64_t key, int *err);
+PMEMoid hashmap_delete_tm(TOID(struct hashmap) h, uint64_t key, int *err);
 
 /* boolean return if key is present */
-int hashmap_contains(TOID(struct hashmap) h, uint64_t key);
+int hashmap_contains_tm(TOID(struct hashmap) h, uint64_t key);
 
 /* foreach function with callback */
 int hashmap_foreach(TOID(struct hashmap) h, int (*cb)(uint64_t key, PMEMoid value, void *arg), void *arg);
 
+int hashmap_foreach_tm(TOID(struct hashmap) h, int (*cb)(uint64_t key, PMEMoid value, void *arg), void *arg);
+
 /* entirely destroys hashmap and frees memory */
-int hashmap_destroy(TOID(struct hashmap) *h);
+int hashmap_destroy(PMEMobjpool *pop, TOID(struct hashmap) *h);
 
 #ifdef __cplusplus
 }

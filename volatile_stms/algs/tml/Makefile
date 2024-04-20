@@ -1,29 +1,3 @@
-CC:=gcc -std=c17
-CFLAGS:=-c -Wall
+SRCS+=tml.c
 
-ROOT_DIR:=$(abspath ../..)
-ALGS_DIR:=$(abspath ..)
-
-vpath %.c $(ROOT_DIR)/lib
-
-DEPS=-I$(ROOT_DIR)/lib
-DEPS+=-I$(ALGS_DIR)/common
-DEPS+=-I$(CURDIR)
-LIBS:=
-OUT_DIR:=./out
-
-_OBJS=tml.o tml_util.o util.o
-OBJS=$(addprefix $(OUT_DIR)/,$(_OBJS))
-
-.PHONY: all
-all: $(OBJS)
-
-$(OUT_DIR)/%.o: %.c | $(OUT_DIR)
-	$(CC) $(CFLAGS) $(LIBS) $(DEPS) $< -o $@
-
-$(OUT_DIR):
-	mkdir $(OUT_DIR)
-
-.PHONY: clean
-clean:
-	rm -rf $(OUT_DIR)
+include ../common/Makefile.common

@@ -50,7 +50,7 @@ int tx_hash_new(struct tx_hash **hashp);
 /* inserts only new entry */
 int tx_hash_insert(struct tx_hash *h, uintptr_t key, uint64_t value);
 
-/* inserts or updates */
+/* returns 0 if insert, 1 if updating and -1 on error */
 int tx_hash_put(struct tx_hash *h, uintptr_t key, uint64_t value);
 
 /* get entry or NULL if key is not present */

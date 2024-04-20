@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include <string.h>
-#include "tml_util.h"
+
+#include <util.h>
+#include "tx_util.h"
 
 #define VEC_INIT 8
 
@@ -61,7 +63,7 @@ void tx_stack_empty(struct tx_stack *s)
 int tx_stack_destroy(struct tx_stack **sp)
 {
 	if (*sp == NULL)
-		return 1;
+		return 0;
 
 	tx_stack_empty(*sp);
 	free(*sp);
@@ -76,7 +78,7 @@ int tx_stack_isempty(struct tx_stack *s)
 }
 
 int tx_vector_init(struct tx_vec **vecp)
-{
+{	
 	struct tx_vec *v = malloc(sizeof(struct tx_vec));
 	if (v == NULL)
 		return 1;
@@ -84,56 +86,90 @@ int tx_vector_init(struct tx_vec **vecp)
 	v->length = 0;
 	v->capacity = VEC_INIT;
 
-	size_t sz = VEC_INIT * sizeof(void *);
-	v->addrs = malloc(sz);
-	if (v->addrs == NULL) {
+	size_t sz = VEC_INIT * sizeof(struct tx_vec_entry);
+	v->arr = malloc(sz);
+	if (v->arr == NULL) {
 		free(v);
 		return 1;
 	}
 
-	memset(v->addrs, 0, sz);
+	memset(v->arr, 0, sz);
 	*vecp = v;
-
 	return 0;
 }
 
 int tx_vector_resize(struct tx_vec *vec)
 {
 	size_t new_cap = vec->capacity * 2;
-	size_t sz = new_cap * sizeof(void *);
-	void **tmp = malloc(sz);
+	size_t sz = new_cap * sizeof(struct tx_vec_entry);
+	struct tx_vec_entry *tmp = malloc(sz);
 	if (tmp == NULL)
 		return 1;
 
 	memset(tmp, 0, sz);
-	memcpy(tmp, vec->addrs, vec->capacity * sizeof(void *));
-	free(vec->addrs);
-	vec->addrs = tmp;
+	memcpy(tmp, vec->arr, vec->capacity * sizeof(struct tx_vec_entry));
+	free(vec->arr);
+	vec->arr = tmp;
 	vec->capacity = new_cap;
 
 	return 0;
 }
 
-int tx_vector_append(struct tx_vec *vec, void *addr)
+/* returns -1 on error */
+int tx_vector_append(struct tx_vec *vec, struct tx_vec_entry *entry)
 {
 	if (vec->length >= vec->capacity) {
 		if (tx_vector_resize(vec)) 
-			return 1;
+			return -1;
 	}
 
-	vec->addrs[vec->length++] = addr;
-	return 0;
+	int idx = vec->length++;
+	vec->arr[idx] = *entry;
+	return idx;
 }
+
+
 void tx_vector_destroy(struct tx_vec **vecp)
 {
 	struct tx_vec *vec = *vecp;
-	free(vec->addrs);
+	free(vec->arr);
 	free(vec);
 	*vecp = NULL;
 }
 
+void _vector_free_entries(struct tx_vec *vec)
+{
+	struct tx_vec_entry *entry;
+	int i;
+	for (i = 0; i < vec->length; i++) {
+		entry = &vec->arr[i];
+		free(entry->pval);
+		entry->pval = NULL;
+	}
+}
+
 void tx_vector_empty(struct tx_vec *vec)
 {
-	memset(vec->addrs, 0, vec->capacity * sizeof(void *));
+	_vector_free_entries(vec);
+	memset(vec->arr, 0, vec->capacity * sizeof(void *));
 	vec->length = 0;
+}
+
+void tx_vector_empty_unsafe(struct tx_vec *vec)
+{
+	memset(vec->arr, 0, vec->capacity * sizeof(void *));
+	vec->length = 0;
+}
+
+int tx_util_is_zeroed(const void *addr, size_t len)
+{
+	const char *a = addr;
+
+	if (len == 0)
+		return 1;
+
+	if (a[0] == 0 && memcmp(a, a + 1, len - 1) == 0)
+		return 1;
+
+	return 0;
 }

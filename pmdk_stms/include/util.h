@@ -1,27 +1,33 @@
 #ifndef UTIL_H
 #define UTIL_H 1
-#include <stdint.h>
+#define _GNU_SOURCE
+#include <unistd.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <stdint.h>
+#include <stdio.h>
 
 #define _MNOOP do {} while(0)
+#define _DLOG(fmt, ...) do { fprintf(stderr, "[%d] %s:%d:%s(): " fmt "\n", gettid(), __FILE__, __LINE__, __func__, ##__VA_ARGS__); } while(0)
+#define _DPRINT(fmt, ...) do { fprintf(stderr, fmt "\n", ##__VA_ARGS__); } while(0)
+#define _DABORT() do { fprintf(stderr, "[%d] TX ABORTED: %s(): %s\n", gettid(), __func__, pmemobj_errormsg()); } while(0)
 
-#ifdef DEBUG
-#define DEBUGLOG(fmt, ...) do { fprintf(stderr, "%s:%d:%s(): " fmt "\n", __FILE__, __LINE__, __func__, __VA_ARGS__); } while(0)
-#define DEBUGPRINT(fmt, ...) do { fprintf(stderr, fmt "\n", __VA_ARGS__); } while(0)
-#define DEBUGABORT() do { fprintf(stderr, "%s(): TX aborted\n", __func__); } while(0)
+#if defined(DEBUG)
+#define DEBUGLOG(fmt, ...) _DLOG(fmt, ##__VA_ARGS__)
+#define DEBUGABORT() _DABORT()
+#define DEBUGPRINT(fmt, ...) _DPRINT(fmt, ##__VA_ARGS__)
+#elif defined(DEBUGERR)
+#define DEBUGLOG(fmt, ...) _DLOG(fmt, ##__VA_ARGS__)
+#define DEBUGABORT() _DABORT()
+#define DEBUGPRINT(fmt, ...) _MNOOP
 #else
 #define DEBUGLOG(fmt, ...) _MNOOP
-#define DEBUGPRINT(fmt, ...) _MNOOP
 #define DEBUGABORT() _MNOOP
+#define DEBUGPRINT(fmt, ...) _MNOOP
 #endif
+
 
 #define IS_EVEN(val) (((val) & 1) == 0)
 #define IS_ODD(val) (((val) & 1) != 0)
-
-int util_is_zeroed(const void *addr, size_t len);
 
 /*
  * hash_64 - 64 bit Fowler/Noll/Vo-0 FNV-1a hash code
@@ -81,9 +87,5 @@ static inline uint64_t fnv64(uint64_t x)
 	/* return our new hash value */
 	return (FNV1_64_INIT ^ x) * FNV_64_PRIME;
 }
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

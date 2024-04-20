@@ -1,0 +1,14 @@
+include ../../../common/common.inc.mk
+
+ROOT_DIR:=$(abspath ../..)
+ALGS_DIR:=$(abspath ..)
+
+vpath %.c $(ALGS_DIR)/common
+
+INCS+=-I$(ROOT_DIR)/include
+INCS+=-I$(ALGS_DIR)/common
+INCS+=-I$(CURDIR)
+
+LIBS+=-lpmemobj -lpmem
+
+include ../../../common/Makefile.common

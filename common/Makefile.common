@@ -1,0 +1,14 @@
+OBJS+=$(addprefix $(OUT_DIR)/,$(SRCS:.c=.o))
+
+.PHONY: all
+all: $(OBJS)
+
+$(OUT_DIR)/%.o: %.c | $(OUT_DIR)
+	$(CC) $(CFLAGS) $(LIBS) $(INCS) $< -o $@
+
+$(OUT_DIR):
+	mkdir -p $(OUT_DIR)
+
+.PHONY: clean
+clean::
+	rm -rf $(OUT_DIR)

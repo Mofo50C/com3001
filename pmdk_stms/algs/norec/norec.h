@@ -28,42 +28,21 @@ norec_thread_exit()
 #define NOREC_FINALLY _TX_FINALLY
 /* end define aliases */
 
-/* valp is pointer to variable */
-#define NOREC_WRITE_P(var, valp)\
-	NOREC_WRITE_P_DIRECT(&(var), valp, sizeof(__typeof__(*(valp))))
-
-#define NOREC_WRITE_P_DIRECT(pdirect_field, valp, size) ({\
-	void *_pval = malloc(size);\
-	memcpy(_pval, valp, size);\
-	norec_tx_write(pdirect_field, size, _pval);\
-})
-
 /* val is literal value to be written */
 #define NOREC_WRITE(var, val)\
-	_NOREC_WRITE(&(var), val, __typeof__(val), sizeof(__typeof__(val)))
+	_NOREC_WRITE(&(var), val, __typeof__(val), sizeof(val))
 
 #define NOREC_WRITE_DIRECT(pdirect_field, val, sz)\
 	_NOREC_WRITE(pdirect_field, val, __typeof__(val), sz)
 
 #define _NOREC_WRITE(pdirect_field, val, t, sz) ({\
-	t _val = val;\
-	t *_pval = malloc(sz);\
-	memcpy(_pval, &_val, sz);\
-	norec_tx_write(pdirect_field, sz, _pval);\
+	t _buf = val;\
+	norec_tx_write(pdirect_field, sz, &_buf);\
 })
-
-/* pval is is pointer to dynamic memory in heap
- * doesn't need malloc'ing again
- */
-#define NOREC_WRITE_PDYN(var, pval)\
-	NOREC_WRITE_PDYN_DIRECT(&(var), pval, sizeof(*(pval)))
-
-#define NOREC_WRITE_PDYN_DIRECT(pdirect_field, pval, sz)\
-norec_tx_write(pdirect_field, sz, pval)
 
 /* shared reads */
 #define NOREC_READ(var)\
-	_NOREC_READ(&(var), __typeof__(var), sizeof(__typeof__(var)))
+	_NOREC_READ(&(var), __typeof__(var), sizeof(var))
 
 #define NOREC_READ_DIRECT(p, sz)\
 	_NOREC_READ(p, __typeof__(*(p)), sz)

@@ -2,7 +2,7 @@
 #define STM_H 1
 
 #if defined(TML)
-	#include "tml.h"
+	#include <tml.h>
 
 	#define STM_TH_ENTER TML_ENTER
 	#define STM_TH_EXIT TML_EXIT
@@ -33,7 +33,7 @@
 	#define STM_NEW TML_NEW
 	#define STM_ZNEW TML_ZNEW
 #elif defined(NOREC)
-	#include "norec.h"
+	#include <norec.h>
 
 	#define STM_TH_ENTER NOREC_ENTER
 	#define STM_TH_EXIT NOREC_EXIT
@@ -64,7 +64,7 @@
 	#define STM_NEW NOREC_NEW
 	#define STM_ZNEW NOREC_ZNEW
 #else
-	#include "txpmdk.h"
+	#include <txpmdk.h>
 
 	#define STM_TH_ENTER TXPMDK_ENTER
 	#define STM_TH_EXIT TXPMDK_EXIT

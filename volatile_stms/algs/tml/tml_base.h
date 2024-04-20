@@ -2,29 +2,10 @@
 #define TML_BASE_H 1
 
 #include <setjmp.h>
-#include <unistd.h>
-#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-enum tx_stage {
-    TX_STAGE_NONE,
-    TX_STAGE_WORK,
-    TX_STAGE_ONRETRY,
-    TX_STAGE_ONABORT,
-    TX_STAGE_ONCOMMIT,
-    TX_STAGE_FINALLY
-};
-
-int tx_get_error(void);
-
-int tx_get_retry(void);
-
-pid_t tx_get_tid(void);
-
-enum tx_stage tx_get_stage(void);
 
 void tml_thread_enter(void);
 

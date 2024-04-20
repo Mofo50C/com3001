@@ -1,8 +1,8 @@
-#ifndef TX_HASHMAP_H
-#define TX_HASHMAP_H 1
+#ifndef TM_HASHMAP_H
+#define TM_HASHMAP_H 1
 
 #include <stdlib.h>
-#include <stdint>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,23 +30,27 @@ struct hashmap {
 /* allocate new hashmap */
 int hashmap_new(struct hashmap **h);
 
+int hashmap_new_cap(struct hashmap **h, size_t capacity);
+
 /* inserts or updates */
-int hashmap_put(struct hashmap *h, uint64_t key, void *value, void **retval);
+int hashmap_put_tm(struct hashmap *h, uint64_t key, void *value, void **retval);
 
 /* get value or NULL if key is not present */
-void *hashmap_get(struct hashmap *h, uint64_t key, int *err);
+void *hashmap_get_tm(struct hashmap *h, uint64_t key, int *err);
 
 /* delete key from map */
-void *hashmap_delete(struct hashmap *h, uint64_t key, int *err);
+void *hashmap_delete_tm(struct hashmap *h, uint64_t key, int *err);
 
 /* boolean return if key is present */
-int hashmap_contains(struct hashmap *h, uint64_t key);
+int hashmap_contains_tm(struct hashmap *h, uint64_t key);
 
 /* foreach function with callback */
 int hashmap_foreach(struct hashmap *h, int (*cb)(uint64_t key, void *value, void *arg), void *arg);
 
+int hashmap_foreach_tm(struct hashmap *h, int (*cb)(uint64_t key, void *value, void *arg), void *arg);
+
 /* entirely destroys hashmap and frees memory */
-int hashmap_destroy(struct hashmap **h);
+void hashmap_destroy(struct hashmap **h);
 
 #ifdef __cplusplus
 }

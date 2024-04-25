@@ -63,7 +63,7 @@ void map_print(TOID(struct hashmap) h)
 }
 
 
-void map_insert(TOID(struct hashmap) h, uint64_t key, int val)
+void tm_map_insert(TOID(struct hashmap) h, uint64_t key, int val)
 {	
 	PMEMoid oldval;
 	TOID(struct hash_val) hval = hash_val_new(val);
@@ -85,11 +85,26 @@ void map_insert(TOID(struct hashmap) h, uint64_t key, int val)
 	}
 }
 
-void map_read(TOID(struct hashmap) h, uint64_t key)
+void tm_map_read(TOID(struct hashmap) h, uint64_t key)
 {
 	PMEMoid ret = hashmap_get_tm(h, key, NULL);
 	if (!OID_IS_NULL(ret))
-		printf("get %d: %d\n", key, ((struct hash_val *)pmemobj_direct(ret))->val);
+		printf("[%d] get %d: %d\n", gettid(), key, ((struct hash_val *)pmemobj_direct(ret))->val);
+}
+
+void tm_map_delete(TOID(struct hashmap) h, uint64_t key)
+{
+	int err = 0;
+	PMEMoid oldval = hashmap_delete_tm(h, key, &err);
+
+	pid_t pid = gettid();
+	if (OID_IS_NULL(oldval) && err) {
+		printf("[%d] failed to delete key %d\n", pid, key);
+	} else if (OID_IS_NULL(oldval)) {
+		printf("[%d] %d not in map\n", pid, key);
+	} else {
+		printf("[%d] deleted key %d with val %d\n", pid, key, ((struct hash_val *)pmemobj_direct(oldval))->val);
+	}
 }
 
 struct worker_args {
@@ -99,13 +114,39 @@ struct worker_args {
 	TOID(struct hashmap) map;
 };
 
-void *map_worker(void *arg)
+void *worker_insert(void *arg)
 {
 	struct worker_args args = *(struct worker_args *)arg;
 	DEBUGPRINT("th%d with pid %d\n", args.idx, tid);
 	STM_TH_ENTER(pop);
 
-	map_insert(args.map, args.key, args.val);
+	tm_map_insert(args.map, args.key, args.val);
+
+	STM_TH_EXIT();
+
+	return NULL;
+}
+
+void *worker_delete(void *arg)
+{
+	struct worker_args args = *(struct worker_args *)arg;
+	DEBUGPRINT("th%d with pid %d\n", args.idx, tid);
+	STM_TH_ENTER(pop);
+
+	tm_map_delete(args.map, args.key);
+
+	STM_TH_EXIT();
+
+	return NULL;
+}
+
+void *worker_get(void *arg)
+{
+	struct worker_args args = *(struct worker_args *)arg;
+	DEBUGPRINT("th%d with pid %d\n", args.idx, tid);
+	STM_TH_ENTER(pop);
+
+	tm_map_read(args.map, args.key);
 
 	STM_TH_EXIT();
 
@@ -114,17 +155,22 @@ void *map_worker(void *arg)
 
 int main(int argc, char const *argv[])
 {
-	if (argc != 2) {
-		printf("usage: %s <num_threads>\n", argv[0]);
+	if (argc != 5) {
+		printf("usage: %s <num_threads> <num_keys> <puts> <gets>\n", argv[0]);
 		return 1;
 	}
 
 	int num_threads = atoi(argv[1]);
 
 	if (num_threads < 1) {
-		printf("<num_accs> must be at least 1\n");
+		printf("<nthreads> must be at least 1\n");
 		return 1;
 	}
+
+	int num_keys = atoi(argv[2]);
+	int const_mult = 100;
+	int put_perc = atoi(argv[3]) * const_mult;
+	int get_perc = atoi(argv[4]) * const_mult;
 
 	const char *path = "/mnt/pmem/hashmap_test";
 	if (access(path, F_OK) != 0) {
@@ -141,9 +187,6 @@ int main(int argc, char const *argv[])
 		}
 	}
 
-	pthread_t workers[num_threads];
-	struct worker_args arg_data[num_threads];
-
     TOID(struct root) root = POBJ_ROOT(pop, struct root);
     struct root *rootp = D_RW(root);
 	
@@ -154,17 +197,26 @@ int main(int argc, char const *argv[])
 	}
 
 	TOID(struct hashmap) map = rootp->map;
-
 	srand(time(NULL));
+
+	pthread_t workers[num_threads];
+	struct worker_args arg_data[num_threads];
 	int i;
 	for (i = 0; i < num_threads; i++) {
 		struct worker_args *args = &arg_data[i];
 		args->map = map;
 		args->val = rand() % 1000;
-		args->key = rand() % 1000;
+		args->key = rand() % num_keys;
 		args->idx = i + 1;
 
-		pthread_create(&workers[i], NULL, map_worker, args);
+		int r = rand() % (100 * const_mult);
+		if (r < put_perc) {
+			pthread_create(&workers[i], NULL, worker_insert, args);
+		} else if (r >= put_perc && r < get_perc + put_perc) {
+			pthread_create(&workers[i], NULL, worker_get, args);
+		} else if (r >= put_perc + get_perc) {
+			pthread_create(&workers[i], NULL, worker_delete, args);
+		}
 	}
 
 	for (i = 0; i < num_threads; i++) {
@@ -176,6 +228,7 @@ int main(int argc, char const *argv[])
 	if (hashmap_destroy(pop, &rootp->map))
 		printf("error in destroy...\n");
 
+	pmemobj_close(pop);
 
     return 0;
 }

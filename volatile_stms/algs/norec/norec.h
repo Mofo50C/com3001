@@ -26,6 +26,9 @@
 #define NOREC_EXIT norec_thread_exit
 
 /* val is literal value to be written */
+#define NOREC_WRITE_FIELD(o, field, val)\
+	NOREC_WRITE(o->field, val)
+
 #define NOREC_WRITE(var, val)\
 	_NOREC_WRITE(&(var), val, __typeof__(val), sizeof(val))
 
@@ -38,6 +41,9 @@
 })
 
 /* shared reads */
+#define NOREC_READ_FIELD(o, field)\
+	NOREC_READ(o->field)
+
 #define NOREC_READ(var)\
 	_NOREC_READ(&(var), __typeof__(var), sizeof(var))
 

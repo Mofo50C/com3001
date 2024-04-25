@@ -31,6 +31,9 @@ tml_thread_exit()
 #define TML_WRITE_CHECK tml_tx_write()
 #define TML_READ_CHECK tml_tx_read()
 
+#define TML_WRITE_FIELD(o, field, val)\
+	TML_WRITE(D_RW(o)->field, val)
+
 #define TML_WRITE(var, val)\
 	TML_WRITE_DIRECT(&(var), val, sizeof(val))
 
@@ -39,6 +42,9 @@ tml_thread_exit()
 	pmemobj_tx_add_range_direct(p, sz);\
 	*(p) = (value);\
 })
+
+#define TML_READ_FIELD(o, field)\
+	TML_READ(D_RW(o)->field)
 
 #define TML_READ(var)\
 	_TML_READ(&(var), __typeof__(var))

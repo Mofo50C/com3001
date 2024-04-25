@@ -29,6 +29,9 @@ norec_thread_exit()
 /* end define aliases */
 
 /* val is literal value to be written */
+#define NOREC_WRITE_FIELD(o, field, val)\
+	NOREC_WRITE(D_RW(o)->field, val)
+
 #define NOREC_WRITE(var, val)\
 	_NOREC_WRITE(&(var), val, __typeof__(val), sizeof(val))
 
@@ -41,6 +44,9 @@ norec_thread_exit()
 })
 
 /* shared reads */
+#define NOREC_READ_FIELD(o, field)\
+	NOREC_READ(D_RW(o)->field)
+
 #define NOREC_READ(var)\
 	_NOREC_READ(&(var), __typeof__(var), sizeof(var))
 

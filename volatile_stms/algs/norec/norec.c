@@ -245,7 +245,6 @@ void norec_tx_commit(void)
 	}
 
 	tx_reclaim_frees();
-
 	tx_commit();
 
 	// glb = tx->loc + 2;

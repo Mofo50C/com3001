@@ -27,6 +27,9 @@
 #define TML_WRITE_CHECK tml_tx_write()
 #define TML_READ_CHECK tml_tx_read()
 
+#define TML_WRITE_FIELD(o, field, val)\
+	TML_WRITE(o->field, val)
+
 #define TML_WRITE(var, val)\
 	TML_WRITE_DIRECT(&(var), val, sizeof(val))
 
@@ -34,6 +37,9 @@
 	TML_WRITE_CHECK;\
 	*(p) = (value);\
 })
+
+#define TML_READ_FIELD(o, field)\
+	TML_READ(o->field)
 
 #define TML_READ(var)\
 	_TML_READ(&(var), __typeof__(var))

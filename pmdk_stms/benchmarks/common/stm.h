@@ -96,4 +96,16 @@
 	#define STM_ZNEW TXPMDK_ZNEW
 #endif
 
+#define STM_READ_FIELD_L(o, field)\
+	(D_RO(o)->field)
+
+#define STM_READ_L(var)\
+	(var)
+
+#define STM_WRITE_FIELD_L(o, field, val)\
+	D_RW(o)->field = val
+
+#define STM_WRITE_L(var, val)\
+	var = val
+
 #endif

@@ -43,6 +43,8 @@ int tml_tx_begin(jmp_buf env)
 {	
 	enum tx_stage stage = tx_get_stage();
 	struct tx_meta *tx = get_tx_meta();
+	
+	// DEBUGPRINT("[%d] begining", gettid());
 
 	if (stage == TX_STAGE_NONE || stage == TX_STAGE_WORK) {
 		do {

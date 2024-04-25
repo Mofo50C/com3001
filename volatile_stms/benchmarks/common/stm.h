@@ -67,4 +67,17 @@
 	#define STM_ZNEW TML_ZNEW
 #endif
 
+
+#define STM_READ_FIELD_L(o, field)\
+	(o->field)
+
+#define STM_READ_L(var)\
+	(var)
+
+#define STM_WRITE_FIELD_L(o, field, val)\
+	o->field = val
+
+#define STM_WRITE_L(var, val)\
+	var = val
+
 #endif

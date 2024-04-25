@@ -155,24 +155,24 @@ void *worker_get(void *arg)
 
 int main(int argc, char const *argv[])
 {
-	if (argc != 5) {
-		printf("usage: %s <num_threads> <num_keys> <puts> <gets>\n", argv[0]);
+	if (argc != 6) {
+		printf("usage: %s <pool_file> <num_threads> <num_keys> <puts> <gets>\n", argv[0]);
 		return 1;
 	}
 
-	int num_threads = atoi(argv[1]);
+	int num_threads = atoi(argv[2]);
 
 	if (num_threads < 1) {
 		printf("<nthreads> must be at least 1\n");
 		return 1;
 	}
 
-	int num_keys = atoi(argv[2]);
+	int num_keys = atoi(argv[3]);
 	int const_mult = 100;
-	int put_perc = atoi(argv[3]) * const_mult;
-	int get_perc = atoi(argv[4]) * const_mult;
+	int put_perc = atoi(argv[4]) * const_mult;
+	int get_perc = atoi(argv[5]) * const_mult;
 
-	const char *path = "/mnt/pmem/hashmap_test";
+	const char *path = argv[1];
 	if (access(path, F_OK) != 0) {
 		if ((pop = pmemobj_create(path, POBJ_LAYOUT_NAME(hashmap_test),
 			PMEMOBJ_MIN_POOL * 4, 0666)) == NULL) {

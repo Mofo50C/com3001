@@ -55,15 +55,15 @@ void *process_simple(void *arg)
 
 int main(int argc, char const *argv[])
 {
-	if (argc != 5) {
-		printf("usage: %s <num_threads> <balance1> <balance2> <price>\n", argv[0]);
+	if (argc != 6) {
+		printf("usage: %s <pool_file> <num_threads> <balance1> <balance2> <price>\n", argv[0]);
 		return 1;
 	}
 
-	int num_threads = atoi(argv[1]);
-	int balance1 = atoi(argv[2]);
-	int balance2 = atoi(argv[3]);
-	int price = atoi(argv[4]);
+	int num_threads = atoi(argv[2]);
+	int balance1 = atoi(argv[3]);
+	int balance2 = atoi(argv[4]);
+	int price = atoi(argv[5]);
 
 	if (num_threads < 1) {
 		printf("<num_threads> must be at least 1\n");
@@ -75,7 +75,7 @@ int main(int argc, char const *argv[])
 		return 1;
 	}
 
-	const char *path = "/mnt/pmem/simple_test";
+	const char *path = argv[1];
 	if (access(path, F_OK) != 0) {
 		if ((pop = pmemobj_create(path, POBJ_LAYOUT_NAME(simple_test),
 			PMEMOBJ_MIN_POOL, 0666)) == NULL) {

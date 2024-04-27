@@ -31,7 +31,12 @@ struct worker_args {
 
 int main(int argc, char const *argv[])
 {
-	const char *path = "/mnt/pmem/hashmap_test_internal";
+	if (argc != 2) {
+		printf("usage: %s <pool_file>\n", argv[0]);
+		return 1;
+	}
+
+	const char *path = argv[1];
 	if (access(path, F_OK) != 0) {
 		if ((pop = pmemobj_create(path, POBJ_LAYOUT_NAME(hashmap_test),
 			PMEMOBJ_MIN_POOL * 4, 0666)) == NULL) {

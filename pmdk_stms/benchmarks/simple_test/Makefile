@@ -12,3 +12,5 @@ prepare-%:
 $(addprefix test-,$(ALGS)): test-%: prepare-% $$(wildcard $(ALGS_DIR)/$$*/out/*.o) $(OBJS)
 	$(CC) -o $@ $(filter-out prepare-$*,$^) $(LIBS)
 
+clean::
+	rm -f test-*

@@ -40,6 +40,18 @@ pid_t norec_get_tid(void)
 	return get_tx_meta()->tid;
 }
 
+void norec_tx_restart(void)
+{
+	struct tx_meta *tx = get_tx_meta();
+	tx->retry = 1;
+	pmemobj_tx_abort(-1);
+}
+
+void norec_tx_abort(void)
+{
+	pmemobj_tx_abort(0);
+}
+
 int norec_wrset_get(void *pdirect, void *buf, size_t size)
 {
 	struct tx_meta *tx = get_tx_meta();
@@ -162,18 +174,6 @@ void norec_validate(void)
 int norec_prevalidate(void) {
 	struct tx_meta *tx = get_tx_meta();
 	return tx->loc != glb;
-}
-
-void norec_tx_restart(void)
-{
-	struct tx_meta *tx = get_tx_meta();
-	tx->retry = 1;
-	pmemobj_tx_abort(-1);
-}
-
-void norec_tx_abort(void)
-{
-	pmemobj_tx_abort(0);
 }
 
 void norec_thread_enter(PMEMobjpool *pop)

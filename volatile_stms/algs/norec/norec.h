@@ -67,15 +67,17 @@
 norec_tx_free(p)
 
 #define NOREC_ALLOC(sz)\
-norec_tx_malloc(sz, 0)
+norec_tx_malloc(sz)
 
 #define NOREC_ZALLOC(sz)\
-norec_tx_malloc(sz, 1)
+norec_tx_zalloc(sz)
 
 #define NOREC_NEW(type)\
-norec_tx_malloc(sizeof(type), 0)
+norec_tx_malloc(sizeof(type))
 
 #define NOREC_ZNEW(type)\
-norec_tx_malloc(sizeof(type), 1)
+norec_tx_zalloc(sizeof(type))
+
+#define NOREC_ABORT norec_tx_abort
 
 #endif

@@ -29,9 +29,14 @@ static struct tx_meta *get_tx_meta(void)
 /* global lock */
 static volatile _Atomic int glb = 0;
 
-void norec_tx_abort(void)
+void norec_tx_restart(void)
 {
 	tx_restart();
+}
+
+void norec_tx_abort(void)
+{
+	tx_abort(0);
 }
 
 void norec_thread_enter(void)
@@ -73,7 +78,7 @@ int norec_tx_begin(jmp_buf env)
 	enum tx_stage stage = tx_get_stage();
 	struct tx_meta *tx = get_tx_meta();
 
-	if (stage == TX_STAGE_NONE || stage == TX_STAGE_WORK) {
+	if (stage == TX_STAGE_NONE) {
 		do {
 			tx->loc = glb;
 		} while (IS_ODD(tx->loc));
@@ -196,7 +201,7 @@ void norec_validate(void)
 
 			DEBUGPRINT("[%d] validating...", tx_get_tid());
 			if (memcmp(e->pval, e->addr, e->size))
-				return norec_tx_abort();
+				return norec_tx_restart();
 		}
 
 		if (time == glb) {
@@ -216,9 +221,14 @@ int norec_tx_free(void *ptr)
 	return tx_free(ptr);
 }
 
-void *norec_tx_malloc(size_t size, int zero)
+void *norec_tx_malloc(size_t size)
 {
-	return tx_malloc(size, zero);
+	return tx_malloc(size, 0);
+}
+
+void *norec_tx_zalloc(size_t size)
+{
+	return tx_malloc(size, 1);
 }
 
 void norec_tx_commit(void)
@@ -246,8 +256,6 @@ void norec_tx_commit(void)
 
 	tx_reclaim_frees();
 	tx_commit();
-
-	// glb = tx->loc + 2;
 }
 
 void norec_tx_process(void)

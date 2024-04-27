@@ -5,7 +5,7 @@
 #include <libpmemobj.h>
 
 #define RAII
-#include <stm.h>
+#include "ptm.h"
 
 POBJ_LAYOUT_BEGIN(simple_test);
 POBJ_LAYOUT_ROOT(simple_test, struct root);
@@ -36,19 +36,19 @@ void *process_simple(void *arg)
 	TOID(struct root) root = POBJ_ROOT(pop, struct root);
 	struct accounts *accsp = D_RW(D_RW(root)->accs);
 	
-	STM_TH_ENTER(pop);
+	PTM_TH_ENTER(pop);
 
-	STM_BEGIN() {
-		int balance1 = STM_READ(accsp->balance1);
-		int balance2 = STM_READ(accsp->balance2);
+	PTM_BEGIN() {
+		int balance1 = PTM_READ(accsp->balance1);
+		int balance2 = PTM_READ(accsp->balance2);
 		sleep(1);
-		STM_WRITE(accsp->balance1, (balance1 + price));
-		STM_WRITE(accsp->balance2, (balance2 - price));
-	} STM_ONABORT {
+		PTM_WRITE(accsp->balance1, (balance1 + price));
+		PTM_WRITE(accsp->balance2, (balance2 - price));
+	} PTM_ONABORT {
 		DEBUGABORT();
-	} STM_END
+	} PTM_END
 
-	STM_TH_EXIT();
+	PTM_TH_EXIT();
 
 	return NULL;
 }

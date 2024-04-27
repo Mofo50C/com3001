@@ -35,8 +35,6 @@ void norec_validate(void);
 
 int norec_prevalidate(void);
 
-void norec_preabort(void);
-
 #ifdef __cplusplus
 }
 #endif

@@ -57,15 +57,17 @@
 tml_tx_free(p)
 
 #define TML_ALLOC(sz)\
-tml_tx_malloc(sz, 0)
+tml_tx_malloc(sz)
 
 #define TML_ZALLOC(sz)\
-tml_tx_malloc(sz, 1)
+tml_tx_zalloc(sz)
 
 #define TML_NEW(type)\
-tml_tx_malloc(sizeof(type), 0)
+tml_tx_malloc(sizeof(type))
 
 #define TML_ZNEW(type)\
-tml_tx_malloc(sizeof(type), 1)
+tml_tx_zalloc(sizeof(type))
+
+#define TML_ABORT tml_tx_abort
 
 #endif

@@ -11,13 +11,15 @@
 #define _DPRINT(fmt, ...) do { fprintf(stderr, fmt "\n", ##__VA_ARGS__); } while(0)
 #define _DABORT() do { fprintf(stderr, "[%d] TX ABORTED: %s(): %s\n", gettid(), __func__, pmemobj_errormsg()); } while(0)
 
+#define DEBUG
+
 #if defined(DEBUG)
-#define DEBUGLOG(fmt, ...) _DLOG(fmt, ##__VA_ARGS__)
-#define DEBUGABORT() _DABORT()
-#define DEBUGPRINT(fmt, ...) _DPRINT(fmt, ##__VA_ARGS__)
+#define DEBUGLOG _DLOG
+#define DEBUGABORT _DABORT
+#define DEBUGPRINT _DPRINT
 #elif defined(DEBUGERR)
-#define DEBUGLOG(fmt, ...) _DLOG(fmt, ##__VA_ARGS__)
-#define DEBUGABORT() _DABORT()
+#define DEBUGLOG _DLOG
+#define DEBUGABORT _DABORT
 #define DEBUGPRINT(fmt, ...) _MNOOP
 #else
 #define DEBUGLOG(fmt, ...) _MNOOP

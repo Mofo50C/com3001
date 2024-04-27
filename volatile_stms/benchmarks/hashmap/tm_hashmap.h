@@ -33,7 +33,13 @@ int hashmap_new(struct hashmap **h);
 int hashmap_new_cap(struct hashmap **h, size_t capacity);
 
 /* inserts or updates */
-int hashmap_put_tm(struct hashmap *h, uint64_t key, void *value, void **retval);
+void *hashmap_put_tm(struct hashmap *h, uint64_t key, void *value, int *err);
+
+void *hashmap_put(struct hashmap *h, uint64_t key, void *value, int *err);
+
+int hashmap_resize_tm(struct hashmap *h);
+
+int hashmap_resize(struct hashmap *h);
 
 /* get value or NULL if key is not present */
 void *hashmap_get_tm(struct hashmap *h, uint64_t key, int *err);

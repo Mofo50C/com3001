@@ -22,6 +22,11 @@ pid_t txpmdk_get_tid(void)
 	return get_tx_meta()->tid;
 }
 
+int txpmdk_get_retry(void)
+{
+	return 0;
+}
+
 void txpmdk_thread_enter(PMEMobjpool *pop)
 {
 	struct tx_meta *tx = get_tx_meta();
@@ -30,8 +35,6 @@ void txpmdk_thread_enter(PMEMobjpool *pop)
 }
 
 void txpmdk_thread_exit(void) {}
-
-void txpmdk_preabort(void) {}
 
 int txpmdk_begin(jmp_buf env)
 {

@@ -9,7 +9,6 @@
 #define _TX_END_FUNC tml_tx_end
 #define _TX_GET_RETRY tml_get_retry
 #define _TX_GET_TID tml_get_tid
-#define _TX_PREABORT tml_preabort
 /* end define generics */
 
 #include "tx_generic.h"
@@ -63,5 +62,7 @@ tml_thread_exit()
 #define TML_NEW TX_NEW
 #define TML_ZNEW TX_ZNEW
 #define TML_ZALLOC TX_ZALLOC
+
+#define TML_ABORT tml_tx_abort
 
 #endif

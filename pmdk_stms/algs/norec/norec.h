@@ -9,7 +9,6 @@
 #define _TX_END_FUNC norec_tx_end
 #define _TX_GET_RETRY norec_get_retry
 #define _TX_GET_TID norec_get_tid
-#define _TX_PREABORT norec_preabort
 /* end define generics */
 
 #include "tx_generic.h"
@@ -71,5 +70,7 @@ norec_thread_exit()
 #define NOREC_NEW TX_NEW
 #define NOREC_ZNEW TX_ZNEW
 #define NOREC_ZALLOC TX_ZALLOC
+
+#define NOREC_ABORT norec_tx_abort
 
 #endif

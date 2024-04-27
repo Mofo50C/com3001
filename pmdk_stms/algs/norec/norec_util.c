@@ -86,7 +86,7 @@ void tx_vector_empty(struct tx_vec *vec)
 #define MAX_GROWS 8
 #define INIT_CAP TABLE_PRIMES[0]
 
-static int TABLE_PRIMES[] = {11, 23, 53, 97, 193, 389, 769, 1543, 3079};
+static size_t TABLE_PRIMES[] = {11, 23, 53, 97, 193, 389, 769, 1543, 3079};
 
 uint64_t _hash(uintptr_t key)
 {

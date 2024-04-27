@@ -9,6 +9,11 @@ $(OUT_DIR)/%.o: %.c | $(OUT_DIR)
 $(OUT_DIR):
 	mkdir -p $(OUT_DIR)
 
+ifdef PROG
+$(PROG): $(OBJS)
+	$(CC) -o $@ $^ $(LIBS)
+endif
+
 .PHONY: clean
 clean::
 	rm -rf $(OUT_DIR)

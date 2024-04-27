@@ -1,6 +1,6 @@
 include ../common/bench.common.mk
 
-SRCS+=simple_test.c
+SRCS+=test.c
 include ../common/Makefile.common
 
 build: build-algs

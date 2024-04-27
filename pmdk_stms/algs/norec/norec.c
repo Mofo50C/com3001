@@ -149,7 +149,7 @@ void norec_validate(void)
 
 			DEBUGPRINT("[%d] validating...", tx->tid);
 			if (memcmp(e->pval, e->addr, e->size))
-				return norec_tx_abort();
+				return norec_tx_restart();
 		}
 
 		if (time == glb) {
@@ -164,11 +164,16 @@ int norec_prevalidate(void) {
 	return tx->loc != glb;
 }
 
-void norec_tx_abort(void)
+void norec_tx_restart(void)
 {
 	struct tx_meta *tx = get_tx_meta();
 	tx->retry = 1;
 	pmemobj_tx_abort(-1);
+}
+
+void norec_tx_abort(void)
+{
+	pmemobj_tx_abort(0);
 }
 
 void norec_thread_enter(PMEMobjpool *pop)
@@ -205,31 +210,19 @@ void norec_thread_exit(void)
 	tx_hash_destroy(&tx->wrset_lookup);
 }
 
-void norec_preabort(void)
-{
-	enum pobj_tx_stage stage = pmemobj_tx_stage();
-	struct tx_meta *tx = get_tx_meta();
-
-	if (stage == TX_STAGE_ONABORT) {
-		tx->level = 0;
-	}
-}
-
 int norec_tx_begin(jmp_buf env)
 {
 	enum pobj_tx_stage stage = pmemobj_tx_stage();
 	struct tx_meta *tx = get_tx_meta();
 
-	if (stage == TX_STAGE_NONE || stage == TX_STAGE_WORK) {
-		if (stage == TX_STAGE_NONE) {
-			tx->retry = 0;
-		} else {
-			tx->level++;
-		}
+	if (stage == TX_STAGE_NONE) {
+		tx->retry = 0;
 
 		do {
 			tx->loc = glb;
 		} while (IS_ODD(tx->loc));
+	} else if (stage == TX_STAGE_WORK) {
+		tx->level++;
 	}
 	
 	return pmemobj_tx_begin(tx->pop, env, TX_PARAM_NONE, TX_PARAM_NONE);
@@ -260,8 +253,6 @@ void norec_tx_commit(void)
 
 	DEBUGPRINT("[%d] committing...", tx->tid);
 	pmemobj_tx_commit();
-
-	// glb = tx->loc + 2;
 }
 
 void norec_tx_process(void)

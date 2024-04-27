@@ -1,6 +1,6 @@
-#include <libpmemobj.h>
 #ifndef TXPMDK_BASE_H
 #define TXPMDK_BASE_H 1
+#include <libpmemobj.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -14,7 +14,7 @@ int txpmdk_begin(jmp_buf env);
 
 pid_t txpmdk_get_tid(void);
 
-void txpmdk_preabort(void);
+int txpmdk_get_retry(void);
 
 #ifdef __cplusplus
 }

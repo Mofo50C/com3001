@@ -1,5 +1,5 @@
-#ifndef TML_H
-#define TML_H 1
+#ifndef TXPMDK_H
+#define TXPMDK_H 1
 
 #include "txpmdk_base.h"
 
@@ -7,9 +7,8 @@
 #define _TX_BEGIN_FUNC txpmdk_begin
 #define _TX_PROCESS_FUNC pmemobj_tx_process
 #define _TX_END_FUNC pmemobj_tx_end
-#define _TX_PREABORT txpmdk_preabort
 #define _TX_GET_TID txpmdk_get_tid
-#define _TX_GET_RETRY() 0
+#define _TX_GET_RETRY txpmdk_get_retry
 /* end define generics */
 
 #include "tx_generic.h"
@@ -36,5 +35,8 @@
 #define TXPMDK_NEW TX_NEW
 #define TXPMDK_ZNEW TX_ZNEW
 #define TXPMDK_ZALLOC TX_ZALLOC
+
+#define TXPMDK_ABORT()\
+pmemobj_tx_abort(0)
 
 #endif

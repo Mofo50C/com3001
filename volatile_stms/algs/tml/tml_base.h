@@ -23,9 +23,13 @@ void tml_tx_write(void);
 
 void tml_tx_read(void);
 
+void tml_tx_abort(void);
+
 int tml_tx_free(void *ptr);
 
-void *tml_tx_malloc(size_t size, int fill);
+void *tml_tx_malloc(size_t size);
+
+void *tml_tx_zalloc(size_t size);
 
 #ifdef __cplusplus
 }

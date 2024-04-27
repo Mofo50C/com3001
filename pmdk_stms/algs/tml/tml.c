@@ -33,21 +33,16 @@ pid_t tml_get_tid(void)
 	return get_tx_meta()->tid;
 }
 
-void tml_tx_abort(void)
+void tml_tx_restart(void)
 {
 	struct tx_meta *tx = get_tx_meta();
 	tx->retry = 1;
 	pmemobj_tx_abort(-1);
 }
 
-void tml_preabort(void)
+void tml_tx_abort(void)
 {
-	enum pobj_tx_stage stage = pmemobj_tx_stage();
-	struct tx_meta *tx = get_tx_meta();
-
-	if (stage == TX_STAGE_ONABORT) {
-		tx->level = 0;
-	}
+	pmemobj_tx_abort(0);
 }
 
 void tml_thread_enter(PMEMobjpool *pop)
@@ -64,16 +59,14 @@ int tml_tx_begin(jmp_buf env)
 	enum pobj_tx_stage stage = pmemobj_tx_stage();
 	struct tx_meta *tx = get_tx_meta();
 
-	if (stage == TX_STAGE_NONE || stage == TX_STAGE_WORK) {
-		if (stage == TX_STAGE_NONE) {
-			tx->retry = 0;
-		} else {
-			tx->level++;
-		}
+	if (stage == TX_STAGE_NONE) {
+		tx->retry = 0;
 
 		do {
 			tx->loc = glb;
 		} while (IS_ODD(tx->loc));
+	} else if (stage == TX_STAGE_WORK) {
+		tx->level++;
 	}
 
 	return pmemobj_tx_begin(tx->pop, env, TX_PARAM_NONE, TX_PARAM_NONE);
@@ -82,12 +75,6 @@ int tml_tx_begin(jmp_buf env)
 void tml_tx_commit(void)
 {
 	pmemobj_tx_commit();
-	// struct tx_meta *tx = get_tx_meta();
-	// if (tx->level > 0) return;
-
-	// if (IS_ODD(tx->loc)) {
-	// 	glb = tx->loc + 1;
-	// }
 }
 
 void tml_tx_process(void)
@@ -106,9 +93,9 @@ int tml_tx_end(void)
 	struct tx_meta *tx = get_tx_meta();
 	if (tx->level > 0) {
 		tx->level--;
-	} else if (!tx->retry) {
+	} else {
 		/* release the lock on end (commit or abort) except when retrying */
-		if (IS_ODD(tx->loc))
+		if (!tx->retry && IS_ODD(tx->loc))
 			glb = tx->loc + 1;
 	}
 	return pmemobj_tx_end();
@@ -119,7 +106,7 @@ void tml_tx_write(void)
 	struct tx_meta *tx = get_tx_meta();
 	if (IS_EVEN(tx->loc)) {
 		if (!atomic_compare_exchange_strong(&glb, &tx->loc, tx->loc + 1)) {
-			return tml_tx_abort();
+			return tml_tx_restart();
 		} else {
 			tx->loc++;
 		}
@@ -130,6 +117,6 @@ void tml_tx_read(void)
 {	
 	struct tx_meta *tx = get_tx_meta();
 	if (IS_EVEN(tx->loc) && glb != tx->loc)
-		return tml_tx_abort();
+		return tml_tx_restart();
 }
 

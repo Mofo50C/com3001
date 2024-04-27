@@ -4,15 +4,15 @@
 #include <stdint.h>
 #include <libpmemobj.h>
 
-#define TX_HASHMAP_TYPE_NUM 1001
+#define TM_HASHMAP_TYPE_NUM 1001
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-TOID_DECLARE(struct hashmap, TX_HASHMAP_TYPE_NUM);
-TOID_DECLARE(struct entry, TX_HASHMAP_TYPE_NUM + 1);
-TOID_DECLARE(struct buckets, TX_HASHMAP_TYPE_NUM + 2);
+TOID_DECLARE(struct hashmap, TM_HASHMAP_TYPE_NUM);
+TOID_DECLARE(struct entry, TM_HASHMAP_TYPE_NUM + 1);
+TOID_DECLARE(struct buckets, TM_HASHMAP_TYPE_NUM + 2);
 
 struct entry {
 	uint64_t key;
@@ -36,10 +36,18 @@ struct hashmap {
 /* allocate new hashmap */
 int hashmap_new(PMEMobjpool *pop, TOID(struct hashmap) *h);
 
+/* allocate with capacity */
 int hashmap_new_cap(PMEMobjpool *pop, TOID(struct hashmap) *h, size_t capacity);
 
+int hashmap_resize(PMEMobjpool *pop, TOID(struct hashmap) h);
+
+int hashmap_resize_tm(TOID(struct hashmap) h);
+
+/* insert without TM */
+PMEMoid hashmap_put(PMEMobjpool *pop, TOID(struct hashmap) h, uint64_t key, PMEMoid value, int *err);
+
 /* inserts or updates */
-int hashmap_put_tm(TOID(struct hashmap) h, uint64_t key, PMEMoid value, PMEMoid *retval);
+PMEMoid hashmap_put_tm(TOID(struct hashmap) h, uint64_t key, PMEMoid value, int *err);
 
 /* get value or NULL if key is not present */
 PMEMoid hashmap_get_tm(TOID(struct hashmap) h, uint64_t key, int *err);

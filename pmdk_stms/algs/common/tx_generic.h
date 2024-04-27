@@ -26,7 +26,6 @@ _TX_RETRY_LABEL:\
 				_TX_PROCESS_FUNC();\
 				break;\
 			case TX_STAGE_ONABORT:\
-				_TX_PREABORT();\
 				if (pmemobj_tx_errno() == -1 && _TX_GET_RETRY()) {/* do nothing if retrying...*/}\
 				else
 
@@ -45,7 +44,6 @@ _TX_RETRY_LABEL:\
 				break;\
 			default:\
 				TX_ONABORT_CHECK;\
-				_TX_PREABORT();\
 				_TX_PROCESS_FUNC();\
 				break;\
 		}\

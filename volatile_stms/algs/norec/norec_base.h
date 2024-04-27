@@ -2,6 +2,7 @@
 #define NOREC_BASE_H 1
 
 #include <stdbool.h>
+#include <stdlib.h>
 #include <setjmp.h>
 
 #ifdef __cplusplus
@@ -34,7 +35,9 @@ int norec_tx_end(void);
 
 int norec_tx_free(void *ptr);
 
-void *norec_tx_malloc(size_t size, int fill);
+void *norec_tx_malloc(size_t size);
+
+void *norec_tx_zalloc(size_t size);
 
 #ifdef __cplusplus
 }

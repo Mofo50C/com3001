@@ -22,6 +22,9 @@
 		#define STM_END() } NOREC_END
 	#endif
 
+	#define STM_READ_FIELD NOREC_READ_FIELD
+	#define STM_WRITE_FIELD NOREC_WRITE_FIELD
+
 	#define STM_READ NOREC_READ
 	#define STM_WRITE NOREC_WRITE
 
@@ -33,6 +36,8 @@
 	#define STM_ZALLOC NOREC_ZALLOC
 	#define STM_NEW NOREC_NEW
 	#define STM_ZNEW NOREC_ZNEW
+
+	#define STM_ABORT NOREC_ABORT
 #else
 	#include <tml.h>
 
@@ -54,6 +59,9 @@
 		#define STM_END() } TML_END
 	#endif
 
+	#define STM_READ_FIELD TML_READ_FIELD
+	#define STM_WRITE_FIELD TML_WRITE_FIELD
+
 	#define STM_READ TML_READ
 	#define STM_WRITE TML_WRITE
 
@@ -65,6 +73,8 @@
 	#define STM_ZALLOC TML_ZALLOC
 	#define STM_NEW TML_NEW
 	#define STM_ZNEW TML_ZNEW
+
+	#define STM_ABORT TML_ABORT
 #endif
 
 
@@ -79,5 +89,11 @@
 
 #define STM_WRITE_L(var, val)\
 	var = val
+
+#define STM_READ_DIRECT_L(ptr)\
+	*(ptr)
+
+#define STM_WRITE_DIRECT_L(ptr, val)\
+	*(ptr) = (val)
 
 #endif

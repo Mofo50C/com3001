@@ -25,9 +25,14 @@ static struct tx_meta *get_tx_meta(void)
 /* global lock */
 static volatile _Atomic int glb = 0;
 
-void tml_tx_abort(void)
+void tml_tx_restart(void)
 {
 	tx_restart();
+}
+
+void tml_tx_abort(void)
+{
+	tx_abort(0);
 }
 
 void tml_thread_enter(void)
@@ -44,9 +49,7 @@ int tml_tx_begin(jmp_buf env)
 	enum tx_stage stage = tx_get_stage();
 	struct tx_meta *tx = get_tx_meta();
 	
-	// DEBUGPRINT("[%d] begining", gettid());
-
-	if (stage == TX_STAGE_NONE || stage == TX_STAGE_WORK) {
+	if (stage == TX_STAGE_NONE) {
 		do {
 			tx->loc = glb;
 		} while (IS_ODD(tx->loc));
@@ -62,7 +65,7 @@ void tml_tx_write(void)
 	
 	if (IS_EVEN(tx->loc)) {
 		if (!atomic_compare_exchange_strong(&glb, &tx->loc, tx->loc + 1)) {
-			tml_tx_abort();
+			tml_tx_restart();
 		} else {
 			tx->loc++;
 		}
@@ -75,7 +78,7 @@ void tml_tx_read(void)
 	ASSERT_IN_WORK(tx_get_stage());
 
 	if (IS_EVEN(tx->loc) && glb != tx->loc)
-		tml_tx_abort();
+		tml_tx_restart();
 }
 
 int tml_tx_free(void *ptr)
@@ -83,20 +86,20 @@ int tml_tx_free(void *ptr)
 	return tx_free(ptr);
 }
 
-void *tml_tx_malloc(size_t size, int zero)
+void *tml_tx_malloc(size_t size)
 {
-	return tx_malloc(size, zero);
+	return tx_malloc(size, 0);
 }
 
+void *tml_tx_zalloc(size_t size)
+{
+	return tx_malloc(size, 1);
+}
 
 void tml_tx_commit(void)
 {
 	tx_reclaim_frees();
 	tx_commit();
-
-	// if (IS_ODD(tx->loc)) {
-	// 	glb = tx->loc + 1;
-	// }
 }
 
 void tml_tx_process(void)

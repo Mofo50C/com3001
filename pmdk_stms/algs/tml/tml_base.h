@@ -21,13 +21,13 @@ int tml_tx_end(void);
 
 void tml_tx_write(void);
 
+void tml_tx_abort(void);
+
 void tml_tx_read(void);
 
 int tml_get_retry(void);
 
 pid_t tml_get_tid(void);
-
-void tml_preabort(void);
 
 #ifdef __cplusplus
 }

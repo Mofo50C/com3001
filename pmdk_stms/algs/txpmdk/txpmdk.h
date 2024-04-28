@@ -24,6 +24,9 @@
 #define TXPMDK_FINALLY _TX_FINALLY
 /* end define aliases */
 
+#define TXPMDK_READ_FIELD(o, field) (D_RO(o)->field)
+#define TXPMDK_WRITE_FIELD(o, field, val) ({ TX_ADD_FIELD(o, field); D_RW(o)->field = val; })
+
 #define TXPMDK_READ(var) (var)
 #define TXPMDK_WRITE(var, val) ({ TX_ADD_DIRECT(&(var)); var = val; })
 

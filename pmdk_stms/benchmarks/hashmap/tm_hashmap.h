@@ -4,11 +4,11 @@
 #include <stdint.h>
 #include <libpmemobj.h>
 
-#define TM_HASHMAP_TYPE_NUM 1001
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define TM_HASHMAP_TYPE_NUM 1001
 
 TOID_DECLARE(struct hashmap, TM_HASHMAP_TYPE_NUM);
 TOID_DECLARE(struct entry, TM_HASHMAP_TYPE_NUM + 1);

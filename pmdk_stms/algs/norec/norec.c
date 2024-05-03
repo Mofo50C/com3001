@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdatomic.h>
+#include "tx.h"
 #include "norec_base.h"
 #include "norec_util.h"
 #include "util.h"
@@ -16,6 +17,8 @@ struct tx_meta {
 	int loc;
 	int retry;
 	int level;
+	int num_retries;
+	int num_commits;
 	struct tx_vec *read_set;
 	struct tx_vec *write_set;
 	struct tx_hash *wrset_lookup;
@@ -44,6 +47,7 @@ void norec_tx_restart(void)
 {
 	struct tx_meta *tx = get_tx_meta();
 	tx->retry = 1;
+	tx->num_retries++;
 	pmemobj_tx_abort(-1);
 }
 
@@ -181,6 +185,7 @@ void norec_thread_enter(PMEMobjpool *pop)
 	struct tx_meta *tx = get_tx_meta();
 	tx->tid = gettid();
 	tx->pop = pop;
+	tx->num_retries = 0;
 
 	if (tx_vector_init(&tx->write_set))
 		goto err_abort;
@@ -201,6 +206,8 @@ err_abort:
 void norec_thread_exit(void)
 {
 	struct tx_meta *tx = get_tx_meta();
+	tx_add_metrics(tx->num_retries, tx->num_commits);
+
 	tx_vector_empty(tx->write_set);
 	tx_vector_destroy(&tx->write_set);
 
@@ -208,6 +215,13 @@ void norec_thread_exit(void)
 	tx_vector_destroy(&tx->read_set);
 
 	tx_hash_destroy(&tx->wrset_lookup);
+}
+
+void norec_startup(void) {}
+
+void norec_shutdown(void)
+{
+	tx_print_metrics();
 }
 
 int norec_tx_begin(jmp_buf env)
@@ -275,6 +289,10 @@ int norec_tx_end(void)
 		tx_vector_empty(tx->write_set);
 		tx_vector_empty(tx->read_set);
 		tx_hash_empty(tx->wrset_lookup);
+		
+		if (!tx->retry && !pmemobj_tx_errno()) {
+			tx->num_commits++;
+		}
 		
 		/* release the lock on end (commit or abort) except when retrying */
 		if (!tx->retry)

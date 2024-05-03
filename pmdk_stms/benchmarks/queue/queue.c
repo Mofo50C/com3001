@@ -92,10 +92,12 @@ void tm_dequeue_front(tm_queue_t q)
 		return;
 	}
 
-	if (!OID_IS_NULL(retval))
+	if (!OID_IS_NULL(retval)) {
 		DEBUGPRINT("[%d] dequeued front: %d", gettid(), D_RO((queue_val_t)retval)->val);
-	else
+		pmemobj_free(&retval);
+	} else {
 		DEBUGPRINT("[%d] queue empty", gettid());
+	}
 }
 
 void tm_dequeue_back(tm_queue_t q)
@@ -108,8 +110,10 @@ void tm_dequeue_back(tm_queue_t q)
 		return;
 	}
 
-	if (!OID_IS_NULL(retval))
-		DEBUGPRINT("[%d] dequeued back: %d", gettid(), D_RO((queue_val_t)retval)->val);
-	else
+	if (!OID_IS_NULL(retval)) {
+		DEBUGPRINT("[%d] dequeued front: %d", gettid(), D_RO((queue_val_t)retval)->val);
+		pmemobj_free(&retval);
+	} else {
 		DEBUGPRINT("[%d] queue empty", gettid());
+	}
 }

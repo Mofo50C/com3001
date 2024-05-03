@@ -73,7 +73,7 @@ int main(int argc, char const *argv[])
 
 	PTM_TH_EXIT();
 
-    map_print(map);
+    print_map(map);
 
 	if (hashmap_destroy(pop, &rootp->map))
 		printf("error in destroy\n");

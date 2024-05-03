@@ -7,6 +7,10 @@
 extern "C" {
 #endif
 
+void tml_startup(void);
+
+void tml_shutdown(void);
+
 void tml_thread_enter(PMEMobjpool *pop);
 
 void tml_thread_exit(void);

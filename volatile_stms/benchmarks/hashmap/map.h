@@ -13,7 +13,7 @@ int reduce_val(uint64_t key, void *value, void *arg);
 
 void map_insert(tm_hashmap_t *h, uint64_t key, int val);
 
-void map_print(tm_hashmap_t *h);
+void print_map(tm_hashmap_t *h);
 
 void tm_map_insert(tm_hashmap_t *h, uint64_t key, int val);
 

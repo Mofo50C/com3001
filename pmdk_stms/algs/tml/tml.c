@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdatomic.h>
+#include "tx.h"
 #include "tml_base.h"
 #include "util.h"
 
@@ -12,6 +13,8 @@ struct tx_meta {
 	int loc;
 	int retry;
 	int level;
+	int num_retries;
+	int num_commits;
 };
 
 static struct tx_meta *get_tx_meta(void)
@@ -37,6 +40,7 @@ void tml_tx_restart(void)
 {
 	struct tx_meta *tx = get_tx_meta();
 	tx->retry = 1;
+	tx->num_retries++;
 	pmemobj_tx_abort(-1);
 }
 
@@ -50,9 +54,20 @@ void tml_thread_enter(PMEMobjpool *pop)
 	struct tx_meta *tx = get_tx_meta();
 	tx->tid = gettid();
 	tx->pop = pop;
+	tx->num_retries = 0;
 }
 
-void tml_thread_exit(void) {}
+void tml_thread_exit(void) {
+	struct tx_meta *tx = get_tx_meta();
+	tx_add_metrics(tx->num_retries, tx->num_commits);
+}
+
+void tml_startup(void) {}
+
+void tml_shutdown(void)
+{
+	tx_print_metrics();
+}
 
 int tml_tx_begin(jmp_buf env)
 {
@@ -94,6 +109,10 @@ int tml_tx_end(void)
 	if (tx->level > 0) {
 		tx->level--;
 	} else {
+		if (!tx->retry && !pmemobj_tx_errno()) {
+			tx->num_commits++;
+		}
+
 		/* release the lock on end (commit or abort) except when retrying */
 		if (!tx->retry && IS_ODD(tx->loc))
 			glb = tx->loc + 1;

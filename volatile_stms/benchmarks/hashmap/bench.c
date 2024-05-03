@@ -4,11 +4,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <time.h>
 
 #include "map.h"
 
 #define RAII
 #include "stm.h" 
+
+#define NANOSEC 1000000000.0
+#define CONST_MULT 100
 
 struct root {
     tm_hashmap_t *map;
@@ -18,8 +22,6 @@ static struct root root = {.map = NULL};
 
 struct worker_args {
 	int idx;
-	int val;
-	int key;
 	tm_hashmap_t *map;
 	int n_rounds;
 	int num_keys;
@@ -35,8 +37,7 @@ void *worker_insert(void *arg)
 	int i;
 	for (i = 0; i < args->n_rounds; i++)
 	{
-		// int val = args->idx * args->num_threads * args->n_rounds + i;
-		int val = rand() % 1000;
+		int val = args->idx * args->num_threads * args->n_rounds + i;
 		int key = rand() % args->num_keys;
 		tm_map_insert(args->map, key, val);
 	}
@@ -81,8 +82,6 @@ void *worker_get(void *arg)
 
 	return NULL;
 }
-
-#define CONST_MULT 100
 
 int main(int argc, char const *argv[])
 {
@@ -130,20 +129,20 @@ int main(int argc, char const *argv[])
 
 	tm_hashmap_t *map = root.map;
 
-	map_print(map);
+	print_map(map);
 
 	srand(time(NULL));
 
-	int i;
 	pthread_t workers[num_threads];
 	struct worker_args arg_data[num_threads];
+
+	struct timespec s, f;
+	clock_gettime(CLOCK_MONOTONIC, &s);
+	int i;
 	for (i = 0; i < num_threads; i++) {
 		struct worker_args *args = &arg_data[i];
 		args->idx = i + 1;
 		args->map = map;
-		// args->val = rand() % 1000;
-		// args->val = i + 1;
-		// args->key = rand() % num_keys;
 		args->n_rounds = n_rounds;
 		args->num_keys = num_keys;
 		args->num_threads = num_threads;
@@ -162,7 +161,12 @@ int main(int argc, char const *argv[])
 		pthread_join(workers[i], NULL);
 	}
 
-	map_print(map);
+	clock_gettime(CLOCK_MONOTONIC, &f);
+	double elapsed_time = (f.tv_sec - s.tv_sec);
+	elapsed_time += (f.tv_nsec - s.tv_nsec) / NANOSEC;
+
+	print_map(map);
+	printf("Elapsed: %f\n", elapsed_time);
 
 	hashmap_destroy(&root.map);
 

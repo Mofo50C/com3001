@@ -12,7 +12,7 @@
 #include "stm.h" 
 
 #define NANOSEC 1000000000.0
-
+#define CONST_MULT 100
 
 struct root {
     tm_queue_t *queue;
@@ -22,17 +22,30 @@ static struct root root = {.queue = NULL};
 
 struct worker_args {
 	int idx;
-	int val;
+	int n_rounds;
+	int num_threads;
 	tm_queue_t *queue;
 };
 
 void *worker_enqueue(void *arg)
 {
-	struct worker_args args = *(struct worker_args *)arg;
-	DEBUGPRINT("<P%d> with pid %d\n", args.idx, gettid());
+	struct worker_args *args = (struct worker_args *)arg;
+	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
 	STM_TH_ENTER();
 
-	tm_enqueue_back(args.queue, args.val);
+	int i;
+	for (i = 0; i < args->n_rounds; i++)
+	{
+		
+		int val = args->idx * args->num_threads * args->n_rounds + i;
+		int split = rand() % 2;
+
+		if (split) {
+			tm_enqueue_back(args->queue, val);
+		} else {
+			tm_enqueue_front(args->queue, val);
+		}
+	}
 
 	STM_TH_EXIT();
 
@@ -41,11 +54,21 @@ void *worker_enqueue(void *arg)
 
 void *worker_dequeue(void *arg)
 {
-	struct worker_args args = *(struct worker_args *)arg;
-	DEBUGPRINT("<P%d> with pid %d\n", args.idx, gettid());
+	struct worker_args *args = (struct worker_args *)arg;
+	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
 	STM_TH_ENTER();
 
-	tm_dequeue_front(args.queue);
+	int i;
+	for (i = 0; i < args->n_rounds; i++)
+	{		
+		int split = rand() % 2;
+
+		if (split) {
+			tm_dequeue_back(args->queue);
+		} else {
+			tm_dequeue_front(args->queue);
+		}
+	}
 
 	STM_TH_EXIT();
 
@@ -54,17 +77,42 @@ void *worker_dequeue(void *arg)
 
 int main(int argc, char const *argv[])
 {
-	if (argc != 2) {
-		printf("usage: %s <num_threads>\n", argv[0]);
+	if (argc < 3) {
+		printf("usage: %s <num_threads> <num_rounds> [inserts] [deletes]\n", argv[0]);
 		return 1;
 	}
 	
-	int num_push = atoi(argv[1]);
+	int num_threads = atoi(argv[1]);
 
-	if (num_push < 1) {
+	if (num_threads < 1) {
 		printf("<num_threads> must be at least 1\n");
 		return 1;
 	}
+
+	int n_rounds = atoi(argv[2]);
+	
+	if (n_rounds < 1) {
+		printf("<num_rounds> must be at least 1\n");
+		return 1;
+	}
+
+	int put_ratio = 100;
+	if (argc >= 4)
+		put_ratio = atoi(argv[3]);
+	
+	int del_ratio = 0;
+	if (argc == 5)
+		del_ratio = atoi(argv[4]);
+
+	if (put_ratio + del_ratio != 100) { 
+		printf("ratios must add to 100\n");
+		return 1;
+	}
+
+	put_ratio *= CONST_MULT;
+	del_ratio *= CONST_MULT;
+
+	STM_STARTUP();
 
 	if (queue_new(&root.queue)) {
 		printf("error in new\n");
@@ -73,50 +121,45 @@ int main(int argc, char const *argv[])
 
 	tm_queue_t *queue = root.queue;
 
-	pthread_t pushers[num_push];
-	pthread_t poppers[num_push];
-	struct worker_args push_data[num_push];
-	struct worker_args pop_data[num_push];
+	pthread_t workers[num_threads];
+	struct worker_args arg_data[num_threads];
 
 	srand(time(NULL));
 
 	struct timespec s, f;
 	clock_gettime(CLOCK_MONOTONIC, &s);
 	int i;
-	for (i = 0; i < num_push; i++) {
-		struct worker_args *args = &push_data[i];
+	for (i = 0; i < num_threads; i++) {
+		struct worker_args *args = &arg_data[i];
 		args->idx = i + 1;
 		args->queue = queue;
-		args->val = rand() % 1000;
-		// args->val = i + 1;
 
-		pthread_create(&pushers[i], NULL, worker_enqueue, args);
-	}
+		args->n_rounds = n_rounds;
+		args->num_threads = num_threads;
 
-	for (i = 0; i < num_push; i++) {
-		struct worker_args *args = &pop_data[i];
-		args->idx = i + 1;
-		args->queue = queue;
-		pthread_create(&poppers[i], NULL, worker_dequeue, args);
+		int r = rand() % (100 * CONST_MULT);
+		if (r < put_ratio) {
+			pthread_create(&workers[i], NULL, worker_enqueue, args);
+		} else if (r >= put_ratio && r < del_ratio + put_ratio) {
+			pthread_create(&workers[i], NULL, worker_dequeue, args);
+		}
 	}
 	
-	for (i = 0; i < num_push; i++) {
-		pthread_join(pushers[i], NULL);
-	}
-
-	for (i = 0; i < num_push; i++) {
-		pthread_join(poppers[i], NULL);
+	for (i = 0; i < num_threads; i++) {
+		pthread_join(workers[i], NULL);
 	}
 
 	clock_gettime(CLOCK_MONOTONIC, &f);
 	double elapsed_time = (f.tv_sec - s.tv_sec);
 	elapsed_time += (f.tv_nsec - s.tv_nsec) / NANOSEC;
-	printf("Elapsed: %f\n", elapsed_time);
 
-	// print_queue(queue);
+	print_queue(queue);
+	printf("Elapsed: %f\n", elapsed_time);
 
 	if (queue_destroy(&root.queue))
 		printf("error in destroy\n");
+
+	STM_SHUTDOWN();
 	
     return 0;
 }

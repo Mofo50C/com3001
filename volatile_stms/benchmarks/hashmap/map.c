@@ -30,7 +30,7 @@ int print_val(uint64_t key, void *value, void *arg)
 	return 0;
 }
 
-void map_print(tm_hashmap_t *h)
+void print_map(tm_hashmap_t *h)
 {
 	printf("{\n");
 	hashmap_foreach(h, print_val, NULL);

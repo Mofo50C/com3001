@@ -142,7 +142,7 @@ int main(int argc, char const *argv[])
 	int total_before = 0;
 	hashmap_foreach(map, reduce_val, &total_before);
 
-	map_print(map);
+	print_map(map);
 
 	srand(time(NULL));
 	pthread_t workers[num_threads];
@@ -165,7 +165,7 @@ int main(int argc, char const *argv[])
 		pthread_join(workers[i], NULL);
 	}
 
-	map_print(map);
+	print_map(map);
 
 	int total_after = 0;
 	hashmap_foreach(map, reduce_val, &total_after);

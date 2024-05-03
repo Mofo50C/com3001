@@ -7,8 +7,8 @@
 	#define PTM_TH_ENTER TML_ENTER
 	#define PTM_TH_EXIT TML_EXIT
 
-	#define PTM_STARTUP
-	#define PTM_CLEANUP
+	#define PTM_STARTUP tml_startup
+	#define PTM_SHUTDOWN tml_shutdown
 
 	#if defined(RAII)
 		#define PTM_BEGIN TML_BEGIN
@@ -43,8 +43,8 @@
 	#define PTM_TH_ENTER NOREC_ENTER
 	#define PTM_TH_EXIT NOREC_EXIT
 
-	#define PTM_STARTUP
-	#define PTM_CLEANUP
+	#define PTM_STARTUP norec_startup
+	#define PTM_SHUTDOWN norec_shutdown
 
 	#if defined(RAII)
 		#define PTM_BEGIN NOREC_BEGIN
@@ -79,8 +79,8 @@
 	#define PTM_TH_ENTER TXPMDK_ENTER
 	#define PTM_TH_EXIT TXPMDK_EXIT
 
-	#define PTM_STARTUP
-	#define PTM_CLEANUP
+	#define PTM_STARTUP()
+	#define PTM_SHUTDOWN()
 
 	#if defined(RAII)
 		#define PTM_BEGIN TXPMDK_BEGIN

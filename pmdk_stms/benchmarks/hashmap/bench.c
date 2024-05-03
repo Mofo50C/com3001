@@ -5,11 +5,16 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <libpmemobj.h>
+#include <time.h>
 
 #include "map.h"
 
 #define RAII
 #include "ptm.h" 
+
+#define NANOSEC 1000000000.0
+#define CONST_MULT 100
+#define POOL_SIZE PMEMOBJ_MIN_POOL * 40
 
 POBJ_LAYOUT_BEGIN(hashmap_bench);
 POBJ_LAYOUT_ROOT(hashmap_bench, struct root);
@@ -23,8 +28,6 @@ PMEMobjpool *pop;
 
 struct worker_args {
 	int idx;
-	int val;
-	int key;
 	tm_hashmap_t map;
 	int n_rounds;
 	int num_keys;
@@ -40,8 +43,7 @@ void *worker_insert(void *arg)
 	int i;
 	for (i = 0; i < args->n_rounds; i++)
 	{
-		// int val = args->idx * args->num_threads * args->n_rounds + i;
-		int val = rand() % 1000;
+		int val = args->idx * args->num_threads * args->n_rounds + i;
 		int key = rand() % args->num_keys;
 		tm_map_insert(args->map, key, val);
 	}
@@ -87,8 +89,6 @@ void *worker_get(void *arg)
 	return NULL;
 }
 
-#define CONST_MULT 100
-
 int main(int argc, char const *argv[])
 {
 	if (argc < 5) {
@@ -130,7 +130,7 @@ int main(int argc, char const *argv[])
 	const char *path = argv[1];
 	if (access(path, F_OK) != 0) {
 		if ((pop = pmemobj_create(path, POBJ_LAYOUT_NAME(hashmap_bench),
-			PMEMOBJ_MIN_POOL * 4, 0666)) == NULL) {
+			POOL_SIZE, 0666)) == NULL) {
 			perror("failed to create pool\n");
 			return 1;
 		}
@@ -144,7 +144,9 @@ int main(int argc, char const *argv[])
 
     TOID(struct root) root = POBJ_ROOT(pop, struct root);
     struct root *rootp = D_RW(root);
-	
+
+	PTM_STARTUP();
+
 	if (hashmap_new(pop, &rootp->map)) {
 		printf("error in new...\n");
 		pmemobj_close(pop);
@@ -153,20 +155,19 @@ int main(int argc, char const *argv[])
 
 	tm_hashmap_t map = rootp->map;
 
-	map_print(map);
+	print_map(map);
+	pthread_t workers[num_threads];
+	struct worker_args arg_data[num_threads];
 
 	srand(time(NULL));
 
+	struct timespec s, f;
+	clock_gettime(CLOCK_MONOTONIC, &s);
 	int i;
-	pthread_t workers[num_threads];
-	struct worker_args arg_data[num_threads];
 	for (i = 0; i < num_threads; i++) {
 		struct worker_args *args = &arg_data[i];
 		args->idx = i + 1;
 		args->map = map;
-		// args->val = rand() % 1000;
-		// args->val = i + 1;
-		// args->key = rand() % num_keys;
 		args->n_rounds = n_rounds;
 		args->num_keys = num_keys;
 		args->num_threads = num_threads;
@@ -185,10 +186,17 @@ int main(int argc, char const *argv[])
 		pthread_join(workers[i], NULL);
 	}
 
-	map_print(map);
+	clock_gettime(CLOCK_MONOTONIC, &f);
+	double elapsed_time = (f.tv_sec - s.tv_sec);
+	elapsed_time += (f.tv_nsec - s.tv_nsec) / NANOSEC;
+
+	print_map(map);
+	printf("Elapsed: %f\n", elapsed_time);
 
 	if (hashmap_destroy(pop, &rootp->map))
 		printf("error in destroy...\n");
+
+	PTM_SHUTDOWN();
 	
 	pmemobj_close(pop);
 

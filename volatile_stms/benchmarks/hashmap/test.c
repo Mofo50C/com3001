@@ -43,7 +43,7 @@ int main(int argc, char const *argv[])
 
 	STM_TH_EXIT();
 
-    map_print(map);
+    print_map(map);
 
 	hashmap_destroy(&root.map);
 

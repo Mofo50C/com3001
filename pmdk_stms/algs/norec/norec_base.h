@@ -11,6 +11,10 @@ void norec_thread_enter(PMEMobjpool *pop);
 
 void norec_thread_exit(void);
 
+void norec_startup(void);
+
+void norec_shutdown(void);
+
 int norec_tx_begin(jmp_buf env);
 
 void norec_tx_commit(void);

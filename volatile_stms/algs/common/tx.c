@@ -18,9 +18,11 @@ struct tx {
 	int retry;
 	int last_errnum;
 	int num_retries;
+	int num_commits;
 };
 
 static _Atomic int total_retries = 0;
+static _Atomic int total_commits = 0;
 
 static struct tx *get_tx(void)
 {
@@ -61,9 +63,11 @@ int tx_get_error(void)
 	return get_tx()->last_errnum;
 }
 
-void tx_add_retries(int n)
+void tx_add_metrics(void)
 {
-	atomic_fetch_add_explicit(&total_retries, n, memory_order_relaxed);
+	struct tx *tx = get_tx();
+	atomic_fetch_add_explicit(&total_retries, tx->num_retries, memory_order_relaxed);
+	atomic_fetch_add_explicit(&total_commits, tx->num_commits, memory_order_relaxed);
 }
 
 void tx_abort(int errnum)
@@ -115,7 +119,7 @@ err_abort:
 void tx_thread_exit(void) 
 {
 	struct tx *tx = get_tx();
-	tx_add_retries(tx->num_retries);
+	tx_add_metrics();
 
 	tx_vector_clear(tx->free_list);
 	tx_vector_destroy(&tx->free_list);
@@ -128,12 +132,12 @@ void tx_thread_exit(void)
 
 void tx_shutdown(void)
 {
-	printf("[[TM METRICS]]:\n\tTotal retries: %d\n", total_retries);
+	printf("[[TM METRICS]]\n");
+    printf("\tTotal retries: %d\n", total_retries);
+    printf("\tTotal commits: %d\n", total_commits);
 }
 
-void tx_startup(void)
-{
-}
+void tx_startup(void) {}
 
 int tx_begin(jmp_buf env)
 {
@@ -302,6 +306,7 @@ void tx_commit(void)
 {
 	struct tx *tx = get_tx();
 	tx->stage = TX_STAGE_ONCOMMIT;
+	tx->num_commits++;
 }
 
 void tx_reclaim_frees(void)

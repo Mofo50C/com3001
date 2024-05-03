@@ -34,6 +34,13 @@ int print_val(uint64_t key, PMEMoid value, void *arg)
 	return 0;
 }
 
+void print_map(tm_hashmap_t h)
+{
+	printf("{\n");
+	hashmap_foreach(h, print_val, NULL);
+	printf("}\n");
+}
+
 int reduce_val(uint64_t key, PMEMoid value, void *arg)
 {
 	int *total = (int *)arg;
@@ -97,11 +104,4 @@ void tm_map_delete(tm_hashmap_t h, uint64_t key)
 		DEBUGPRINT("[%d] deleted key %ju with val %d\n", pid, key, D_RW((hash_val_t)oldval)->val);
 		pmemobj_free(&oldval);
 	}
-}
-
-void map_print(tm_hashmap_t h)
-{
-	printf("{\n");
-	hashmap_foreach(h, print_val, NULL);
-	printf("}\n");
 }

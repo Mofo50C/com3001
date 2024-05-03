@@ -10,5 +10,7 @@ INCS+=-I$(ALGS_DIR)/common
 INCS+=-I$(CURDIR)
 
 SRCS+=tx.c tx_util.c
+# LIBS+=-L$(ROOT_DIR)/lib
+# LIBS+=-lrpmalloc
 
 include ../../../common/Makefile.common

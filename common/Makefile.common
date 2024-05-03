@@ -12,6 +12,9 @@ $(OUT_DIR):
 ifdef PROG
 $(PROG): $(OBJS)
 	$(CC) -o $@ $^ $(LIBS)
+
+clean::
+	rm -f $(PROG)
 endif
 
 .PHONY: clean

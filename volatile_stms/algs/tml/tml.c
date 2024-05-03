@@ -23,7 +23,7 @@ static struct tx_meta *get_tx_meta(void)
 /* algorithm specific */
 
 /* global lock */
-static volatile _Atomic int glb = 0;
+static _Atomic int glb = 0;
 
 void tml_tx_restart(void)
 {

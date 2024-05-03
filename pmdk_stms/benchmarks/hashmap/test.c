@@ -16,7 +16,7 @@ POBJ_LAYOUT_ROOT(hashmap_test, struct root);
 POBJ_LAYOUT_END(hashmap_test);
 
 struct root {
-    TOID(struct hashmap) map;
+    tm_hashmap_t map;
 };
 
 PMEMobjpool *pop;
@@ -26,7 +26,7 @@ struct worker_args {
 	int val;
 	int key1;
 	int key2;
-	TOID(struct hashmap) map;
+	tm_hashmap_t map;
 };
 
 int main(int argc, char const *argv[])
@@ -61,7 +61,7 @@ int main(int argc, char const *argv[])
 		return 1;
 	}
 
-	TOID(struct hashmap) map = rootp->map;
+	tm_hashmap_t map = rootp->map;
 
 	PTM_TH_ENTER(pop);
 

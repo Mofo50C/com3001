@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include <unistd.h>
 
+#include <stdatomic.h>
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
@@ -16,7 +17,10 @@ struct tx {
 	int level;
 	int retry;
 	int last_errnum;
+	int num_retries;
 };
+
+static _Atomic int total_retries = 0;
 
 static struct tx *get_tx(void)
 {
@@ -37,6 +41,7 @@ int tx_get_retry(void)
 void tx_restart(void)
 {
 	struct tx *tx = get_tx();
+	tx->num_retries++;
 	tx->retry = 1;
 	tx_abort(-1);
 }
@@ -54,6 +59,11 @@ pid_t tx_get_tid(void)
 int tx_get_error(void)
 {
 	return get_tx()->last_errnum;
+}
+
+void tx_add_retries(int n)
+{
+	atomic_fetch_add_explicit(&total_retries, n, memory_order_relaxed);
 }
 
 void tx_abort(int errnum)
@@ -87,6 +97,7 @@ void tx_abort(int errnum)
 void tx_thread_enter(void)
 {
 	struct tx *tx = get_tx();
+	tx->num_retries = 0;
 	tx->tid = gettid();
 	if (tx_vector_init(&tx->free_list))
 		goto err_abort;
@@ -104,11 +115,24 @@ err_abort:
 void tx_thread_exit(void) 
 {
 	struct tx *tx = get_tx();
-	tx_vector_empty(tx->free_list);
+	tx_add_retries(tx->num_retries);
+
+	tx_vector_clear(tx->free_list);
 	tx_vector_destroy(&tx->free_list);
 
-	tx_vector_empty_unsafe(tx->alloc_list);
+	tx_vector_clear(tx->alloc_list);
 	tx_vector_destroy(&tx->alloc_list);
+
+	tx_stack_destroy(&tx->entries);
+}
+
+void tx_shutdown(void)
+{
+	printf("[[TM METRICS]]:\n\tTotal retries: %d\n", total_retries);
+}
+
+void tx_startup(void)
+{
 }
 
 int tx_begin(jmp_buf env)
@@ -255,8 +279,8 @@ int tx_end(void (*end_cb)(void))
 	int ret = tx->last_errnum;
 	if (tx_stack_isempty(tx->entries)) {
 		tx->stage = TX_STAGE_NONE;
-		tx_vector_empty_unsafe(tx->alloc_list);
-		tx_vector_empty(tx->free_list);
+		tx_vector_clear(tx->alloc_list);
+		tx_vector_clear(tx->free_list);
 
 		end_cb();
 	} else {

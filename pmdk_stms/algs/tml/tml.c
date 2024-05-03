@@ -21,7 +21,7 @@ static struct tx_meta *get_tx_meta(void)
 }
 
 /* global lock */
-static volatile _Atomic int glb = 0;
+static _Atomic int glb = 0;
 
 int tml_get_retry(void)
 {

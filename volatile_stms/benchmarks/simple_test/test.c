@@ -1,3 +1,6 @@
+#define _GNU_SOURCE
+#include <unistd.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,6 +9,7 @@
 
 #define RAII
 #include "stm.h"
+#include "bench_utils.h"
 
 struct account {
 	int balance1;
@@ -17,7 +21,6 @@ struct root {
 };
 
 static struct root root = {.acc = NULL};
-
 
 struct transfer_args {
 	int idx;
@@ -33,7 +36,7 @@ void *process_simple(void *arg)
 
 	int acc1 = accp->balance1;
 	int acc2 = accp->balance2;
-	sleep(1);
+	msleep(500);
 	accp->balance1 = acc1 + price;
 	accp->balance2 = acc2 - price;
 

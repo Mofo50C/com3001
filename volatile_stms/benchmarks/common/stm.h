@@ -7,8 +7,8 @@
 	#define STM_TH_ENTER NOREC_ENTER
 	#define STM_TH_EXIT NOREC_EXIT
 
-	#define STM_STARTUP
-	#define STM_CLEANUP
+	#define STM_STARTUP tx_startup
+	#define STM_SHUTDOWN tx_shutdown
 
 	#if defined(RAII)
 		#define STM_BEGIN NOREC_BEGIN
@@ -44,8 +44,8 @@
 	#define STM_TH_ENTER TML_ENTER
 	#define STM_TH_EXIT TML_EXIT
 
-	#define STM_STARTUP
-	#define STM_CLEANUP
+	#define STM_STARTUP tx_startup
+	#define STM_SHUTDOWN tx_shutdown
 
 	#if defined(RAII)
 		#define STM_BEGIN TML_BEGIN

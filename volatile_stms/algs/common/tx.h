@@ -35,6 +35,10 @@ void tx_thread_enter(void);
 
 void tx_thread_exit(void);
 
+void tx_startup(void);
+
+void tx_shutdown(void);
+
 int tx_begin(jmp_buf env);
 
 void *tx_malloc(size_t size, int zero);

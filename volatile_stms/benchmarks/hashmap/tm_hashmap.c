@@ -34,12 +34,12 @@ uint64_t _hash_int(const void *item)
 	return XXH3_64bits_withSeed(item, sizeof(uint64_t), HASH_SEED);
 }
 
-int hashmap_new(struct hashmap **h)
+int hashmap_new(struct tm_hashmap **h)
 {
 	return hashmap_new_cap(h, INIT_CAP);
 }
 
-int hashmap_new_cap(struct hashmap **h, size_t capacity)
+int hashmap_new_cap(struct tm_hashmap **h, size_t capacity)
 {
 	size_t nbuckets;
 	int num_grows = -1;
@@ -48,16 +48,16 @@ int hashmap_new_cap(struct hashmap **h, size_t capacity)
 		nbuckets = TABLE_PRIMES[++num_grows]; 
 	} while (nbuckets < capacity);
 
-	struct hashmap *map = malloc(sizeof(struct hashmap));
+	struct tm_hashmap *map = malloc(sizeof(struct tm_hashmap));
 	if (map == NULL)
 		return 1;
 
-	memset(map, 0, sizeof(struct hashmap));
+	memset(map, 0, sizeof(struct tm_hashmap));
 
 	*h = map;
 
-	size_t sz = sizeof(struct buckets) + sizeof(struct entry *) * nbuckets;
-	struct buckets *buckets = malloc(sz);
+	size_t sz = sizeof(struct tm_hashmap_buckets) + sizeof(struct tm_hashmap_entry *) * nbuckets;
+	struct tm_hashmap_buckets *buckets = malloc(sz);
 	if (buckets ==  NULL) {
 		free(map);
 		return 1;
@@ -72,7 +72,7 @@ int hashmap_new_cap(struct hashmap **h, size_t capacity)
 	return 0;
 }
 
-void hashmap_entry_init(struct entry *e, uint64_t key, uint64_t hash, void *value)
+void hashmap_entry_init(struct tm_hashmap_entry *e, uint64_t key, uint64_t hash, void *value)
 {
 	e->hash = hash;
 	e->key = key;
@@ -80,16 +80,16 @@ void hashmap_entry_init(struct entry *e, uint64_t key, uint64_t hash, void *valu
 	e->next = NULL;
 }
 
-struct entry *hashmap_entry_new_tm(uint64_t key, uint64_t hash, void *value)
+struct tm_hashmap_entry *hashmap_entry_new_tm(uint64_t key, uint64_t hash, void *value)
 {
-	struct entry *e = STM_ZNEW(struct entry);
+	struct tm_hashmap_entry *e = STM_ZNEW(struct tm_hashmap_entry);
 	hashmap_entry_init(e, key, hash, value);
 	return e;
 }
 
-struct entry *hashmap_entry_new(uint64_t key, uint64_t hash, void *value)
+struct tm_hashmap_entry *hashmap_entry_new(uint64_t key, uint64_t hash, void *value)
 {
-	struct entry *e = malloc(sizeof(struct entry));
+	struct tm_hashmap_entry *e = malloc(sizeof(struct tm_hashmap_entry));
 	if (e == NULL)
 		return NULL;
 
@@ -97,7 +97,7 @@ struct entry *hashmap_entry_new(uint64_t key, uint64_t hash, void *value)
 	return e;
 }
 
-int hashmap_resize_tm(struct hashmap *h)
+int hashmap_resize_tm(struct tm_hashmap *h)
 {
 	int ret = 0;
 	STM_BEGIN() {
@@ -107,16 +107,16 @@ int hashmap_resize_tm(struct hashmap *h)
 		if (((length / (float)old_cap) < MAX_LOAD_FACTOR) || (num_grows >= MAX_GROWS))
 			goto end_return;
 
-		struct buckets *old_buckets = STM_READ(h->buckets);
+		struct tm_hashmap_buckets *old_buckets = STM_READ(h->buckets);
 
 		size_t new_cap = TABLE_PRIMES[++num_grows];
-		size_t sz = sizeof(struct buckets) + sizeof(struct entry *) * new_cap;
-		struct buckets *new_buckets = STM_ZALLOC(sz);
+		size_t sz = sizeof(struct tm_hashmap_buckets) + sizeof(struct tm_hashmap_entry *) * new_cap;
+		struct tm_hashmap_buckets *new_buckets = STM_ZALLOC(sz);
 		new_buckets->num_buckets = new_cap;
 
 		int i;
 		for (i = 0; i < old_cap; i++) {
-			struct entry *old_head;
+			struct tm_hashmap_entry *old_head;
 			while ((old_head = STM_READ(old_buckets->arr[i])) != NULL) {
 				int b = STM_READ(old_head->hash) % new_cap;
 				STM_WRITE(old_buckets->arr[i], STM_READ(old_head->next));
@@ -138,7 +138,7 @@ end_return:	;
 	return ret;
 }
 
-int hashmap_resize(struct hashmap *h)
+int hashmap_resize(struct tm_hashmap *h)
 {
 	int old_cap = h->capacity;
 	int num_grows = h->num_grows;
@@ -147,11 +147,11 @@ int hashmap_resize(struct hashmap *h)
 	if (((length / (float)old_cap) < MAX_LOAD_FACTOR) || (num_grows >= MAX_GROWS))
 		return 0;
 
-	struct buckets *old_buckets = h->buckets;
+	struct tm_hashmap_buckets *old_buckets = h->buckets;
 
 	size_t new_cap = TABLE_PRIMES[++num_grows];
-	size_t sz = sizeof(struct buckets) + sizeof(struct entry *) * new_cap;
-	struct buckets *new_buckets = malloc(sz);
+	size_t sz = sizeof(struct tm_hashmap_buckets) + sizeof(struct tm_hashmap_entry *) * new_cap;
+	struct tm_hashmap_buckets *new_buckets = malloc(sz);
 	if (new_buckets == NULL)
 		return 1;
 
@@ -160,7 +160,7 @@ int hashmap_resize(struct hashmap *h)
 
 	int i;
 	for (i = 0; i < old_cap; i++) {
-		struct entry *old_head;
+		struct tm_hashmap_entry *old_head;
 		while ((old_head = old_buckets->arr[i]) != NULL) {
 			int b = old_head->hash % new_cap;
 			old_buckets->arr[i] = old_head->next;
@@ -179,7 +179,7 @@ int hashmap_resize(struct hashmap *h)
 
 
 /* oldval is either NULL or the value before update */
-void *hashmap_put(struct hashmap *h, uint64_t key, void *value, int *err)
+void *hashmap_put(struct tm_hashmap *h, uint64_t key, void *value, int *err)
 {
 	uint64_t key_hash = GET_HASH(&key);
 
@@ -187,17 +187,17 @@ void *hashmap_put(struct hashmap *h, uint64_t key, void *value, int *err)
 	int found = 0;
 
 	int b = key_hash % h->capacity;
-	struct buckets *buckets = h->buckets;
-	struct entry *entry = buckets->arr[b];
+	struct tm_hashmap_buckets *buckets = h->buckets;
+	struct tm_hashmap_entry *entry = buckets->arr[b];
 	if (entry == NULL) {
-		struct entry *new_entry = hashmap_entry_new(key, key_hash, value);
+		struct tm_hashmap_entry *new_entry = hashmap_entry_new(key, key_hash, value);
 		if (new_entry == NULL)
 			goto err_return;
 
 		buckets->arr[b] = new_entry;
 		h->length++;
 	} else {
-		struct entry *prev;
+		struct tm_hashmap_entry *prev;
 		do {
 			prev = entry;
 			if (entry->key == key) {
@@ -209,7 +209,7 @@ void *hashmap_put(struct hashmap *h, uint64_t key, void *value, int *err)
 		} while ((entry = entry->next) != NULL);
 
 		if (!found) {
-			struct entry *new_entry = hashmap_entry_new(key, key_hash, value);
+			struct tm_hashmap_entry *new_entry = hashmap_entry_new(key, key_hash, value);
 			if (new_entry == NULL)
 				goto err_return;
 
@@ -230,7 +230,7 @@ err_return:
 	return NULL;
 }
 
-void *hashmap_put_tm(struct hashmap *h, uint64_t key, void *value, int *err)
+void *hashmap_put_tm(struct tm_hashmap *h, uint64_t key, void *value, int *err)
 {
 	uint64_t key_hash = GET_HASH(&key);
 
@@ -239,14 +239,14 @@ void *hashmap_put_tm(struct hashmap *h, uint64_t key, void *value, int *err)
 	int ret = 0;
 	STM_BEGIN() {
 		int b = key_hash % STM_READ(h->capacity);
-		struct buckets *buckets = STM_READ(h->buckets);
-		struct entry *entry = STM_READ(buckets->arr[b]);
+		struct tm_hashmap_buckets *buckets = STM_READ(h->buckets);
+		struct tm_hashmap_entry *entry = STM_READ(buckets->arr[b]);
 		if (entry == NULL) {
-			struct entry *new_entry = hashmap_entry_new_tm(key, key_hash, value);
+			struct tm_hashmap_entry *new_entry = hashmap_entry_new_tm(key, key_hash, value);
 			STM_WRITE(buckets->arr[b], new_entry);
 			STM_WRITE(h->length, (STM_READ(h->length) + 1));
 		} else {
-			struct entry *prev;
+			struct tm_hashmap_entry *prev;
 			do {
 				prev = entry;
 				if (STM_READ(entry->key) == key) {
@@ -258,7 +258,7 @@ void *hashmap_put_tm(struct hashmap *h, uint64_t key, void *value, int *err)
 			} while ((entry = STM_READ(entry->next)) != NULL);
 
 			if (!found) {
-				struct entry *new_entry = hashmap_entry_new_tm(key, key_hash, value);
+				struct tm_hashmap_entry *new_entry = hashmap_entry_new_tm(key, key_hash, value);
 				STM_WRITE(prev->next, new_entry);
 				STM_WRITE(h->length, (STM_READ(h->length) + 1));
 			}
@@ -280,7 +280,7 @@ void *hashmap_put_tm(struct hashmap *h, uint64_t key, void *value, int *err)
 	return oldval;
 }
 
-void *hashmap_get_tm(struct hashmap *h, uint64_t key, int *err)
+void *hashmap_get_tm(struct tm_hashmap *h, uint64_t key, int *err)
 {
 	uint64_t key_hash = GET_HASH(&key);
 	void *retval = NULL;
@@ -288,9 +288,9 @@ void *hashmap_get_tm(struct hashmap *h, uint64_t key, int *err)
 	int ret = 0;
 	STM_BEGIN() {
 		int bucket = key_hash % STM_READ(h->capacity);
-		struct buckets *buckets = STM_READ(h->buckets);
+		struct tm_hashmap_buckets *buckets = STM_READ(h->buckets);
 
-		struct entry *entry;
+		struct tm_hashmap_entry *entry;
 		for (entry = STM_READ(buckets->arr[bucket]); 
 			entry != NULL;
 			entry = STM_READ(entry->next)) 
@@ -313,7 +313,7 @@ void *hashmap_get_tm(struct hashmap *h, uint64_t key, int *err)
 	return retval;
 }
 
-void *hashmap_delete_tm(struct hashmap *h, uint64_t key, int *err)
+void *hashmap_delete_tm(struct tm_hashmap *h, uint64_t key, int *err)
 {
 	uint64_t key_hash = GET_HASH(&key);
 
@@ -321,36 +321,31 @@ void *hashmap_delete_tm(struct hashmap *h, uint64_t key, int *err)
 	int found = 0;
 	void *oldval = NULL;
 	STM_BEGIN() {
-		DEBUGPRINT("hello!");
 		int b = key_hash % STM_READ(h->capacity);
-		struct buckets *buckets = STM_READ(h->buckets);
-		struct entry *head = STM_READ(buckets->arr[b]);
+		struct tm_hashmap_buckets *buckets = STM_READ(h->buckets);
+		struct tm_hashmap_entry *head = STM_READ(buckets->arr[b]);
 		if (head == NULL)
 			goto end;
 
 		if (STM_READ(head->key) == key) {
-			found = 1;
-			oldval = STM_READ(head->value);
 			STM_WRITE(buckets->arr[b], STM_READ(head->next));
 			STM_FREE(head);
+			found = 1;
 			goto end;
 		}
 
-		struct entry *prev = head;
-		for (head = STM_READ(head->next);
-			head != NULL;
-			prev = head, head = STM_READ(head->next))
-		{
-			if (STM_READ(head->key) == key) {
-				found = 1;
-				break;
-			}
+		struct tm_hashmap_entry *prev = head;
+		struct tm_hashmap_entry *curr = STM_READ(prev->next);
+
+		while(curr != NULL && STM_READ(curr->key) != key) {
+			prev = curr;
+			curr = STM_READ(curr->next);
 		}
 
-		if (found) {
-			oldval = STM_READ(head->value);
-			STM_WRITE(prev->next, STM_READ(head->next));
-			STM_FREE(head);
+		if (curr != NULL && STM_READ(curr->key) == key) {
+			STM_WRITE(prev->next, STM_READ(curr->next));
+			STM_FREE(curr);
+			found = 1;
 		}
 end:	;
 	} STM_ONABORT {
@@ -371,16 +366,16 @@ stm_err:
 	return NULL;
 }
 
-int hashmap_contains_tm(struct hashmap *h, uint64_t key)
+int hashmap_contains_tm(struct tm_hashmap *h, uint64_t key)
 {
 	uint64_t key_hash = GET_HASH(&key);
 
 	int ret = 0;
 	STM_BEGIN() {
 		int bucket = key_hash % STM_READ(h->capacity);
-		struct buckets *buckets = STM_READ(h->buckets);
+		struct tm_hashmap_buckets *buckets = STM_READ(h->buckets);
 
-		struct entry *entry;
+		struct tm_hashmap_entry *entry;
 		for (entry = STM_READ(buckets->arr[bucket]); 
 			entry != NULL;
 			entry = STM_READ(entry->next)) 
@@ -398,10 +393,10 @@ int hashmap_contains_tm(struct hashmap *h, uint64_t key)
 	return ret;
 }
 
-int hashmap_foreach(struct hashmap *h, int (*cb)(uint64_t key, void *value, void *arg), void *arg)
+int hashmap_foreach(struct tm_hashmap *h, int (*cb)(uint64_t key, void *value, void *arg), void *arg)
 {
-	struct buckets *buckets = h->buckets;
-	struct entry *var;
+	struct tm_hashmap_buckets *buckets = h->buckets;
+	struct tm_hashmap_entry *var;
 
 	for (size_t i = 0; i < buckets->num_buckets; i++)  {
 		for (var = buckets->arr[i];
@@ -417,13 +412,13 @@ int hashmap_foreach(struct hashmap *h, int (*cb)(uint64_t key, void *value, void
 	return 0;
 }
 
-int hashmap_foreach_tm(struct hashmap *h, int (*cb)(uint64_t key, void *value, void *arg), void *arg)
+int hashmap_foreach_tm(struct tm_hashmap *h, int (*cb)(uint64_t key, void *value, void *arg), void *arg)
 {
 	int err = 0;
 	int ret = 0;
 	STM_BEGIN() {
-		struct buckets *buckets = STM_READ(h->buckets);
-		struct entry *var;
+		struct tm_hashmap_buckets *buckets = STM_READ(h->buckets);
+		struct tm_hashmap_entry *var;
 
 		for (size_t i = 0; i < STM_READ(buckets->num_buckets); i++)  {
 			for (var = STM_READ(buckets->arr[i]); 
@@ -447,33 +442,34 @@ end:	;
 	return ret;
 }
 
-void _hashmap_destroy_entries(struct hashmap *h)
+void _hashmap_destroy_entries(struct tm_hashmap *h)
 {
 	if (h->length > 0) {
 		int i;
-		struct entry *head;
-		struct buckets *buckets = h->buckets;
+		struct tm_hashmap_entry *head;
+		struct tm_hashmap_buckets *buckets = h->buckets;
 		for (i = 0; i < h->capacity; i++) {
 			head = buckets->arr[i];
 			if (head == NULL) 
 				continue;
 
-			struct entry *e;
-			while ((e = head->next) != NULL) {
-				buckets->arr[i] = e;
+			struct tm_hashmap_entry *next;
+			while (head->next != NULL) {
+				next = head->next;
 				free(head->value);
 				free(head);
-				head = e;
+				head = next;
 			}
+			free(head->value);
 			free(head);
 			buckets->arr[i] = NULL;
 		}
 	}
 }
 
-void hashmap_destroy(struct hashmap **h)
+void hashmap_destroy(struct tm_hashmap **h)
 {
-	struct hashmap *map = *h;
+	struct tm_hashmap *map = *h;
 	if (map == NULL)
 		return;
 

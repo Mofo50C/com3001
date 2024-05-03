@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 
+#include "util.h"
 #include "map.h"
 
 int val_constr(PMEMobjpool *pop, void *ptr, void *arg)
@@ -17,9 +18,9 @@ int val_constr(PMEMobjpool *pop, void *ptr, void *arg)
 	return 0;
 }
 
-TOID(struct hash_val) hash_val_new(int val)
+hash_val_t hash_val_new(int val)
 {
-	TOID(struct hash_val) myval;
+	hash_val_t myval;
 	int mynum = val;
 	POBJ_NEW(pop, &myval, struct hash_val, val_constr, &mynum);
 
@@ -28,7 +29,7 @@ TOID(struct hash_val) hash_val_new(int val)
 
 int print_val(uint64_t key, PMEMoid value, void *arg)
 {
-	printf("\t%ju => %d\n", key, D_RW(TYPED_VAL(value))->val);
+	printf("\t%ju => %d\n", key, D_RW((hash_val_t)value)->val);
 
 	return 0;
 }
@@ -36,16 +37,16 @@ int print_val(uint64_t key, PMEMoid value, void *arg)
 int reduce_val(uint64_t key, PMEMoid value, void *arg)
 {
 	int *total = (int *)arg;
-	*total = *total + D_RO(TYPED_VAL(value))->val;
+	*total = *total + D_RO((hash_val_t)value)->val;
 	return 0;
 }
 
-void map_insert(TOID(struct hashmap) h, uint64_t key, int val)
+void map_insert(tm_hashmap_t h, uint64_t key, int val)
 {	
-	int res;
-	TOID(struct hash_val) hval = hash_val_new(val);
-	PMEMoid oldval = hashmap_put(pop, h, key, hval.oid, &res);
-	if (res < 0) {
+	hash_val_t hval = hash_val_new(val);
+	int err = 0;
+	PMEMoid oldval = hashmap_put(pop, h, key, hval.oid, &err);
+	if (err) {
 		pmemobj_free(&hval.oid);
 		return;
 	}
@@ -55,50 +56,50 @@ void map_insert(TOID(struct hashmap) h, uint64_t key, int val)
 	}
 }
 
-void tm_map_insert(TOID(struct hashmap) h, uint64_t key, int val)
+void tm_map_insert(tm_hashmap_t h, uint64_t key, int val)
 {	
-	int res;
-	TOID(struct hash_val) hval = hash_val_new(val);
-	PMEMoid oldval = hashmap_put_tm(h, key, hval.oid, &res);
+	hash_val_t hval = hash_val_new(val);
+	int err = 0;
+	PMEMoid oldval = hashmap_put_tm(h, key, hval.oid, &err);
 	pid_t pid = gettid();
-	if (res < 0) {
+	if (err) {
+		DEBUGPRINT("[%d] error putting %ju => %d\n", pid, key, val);
 		pmemobj_free(&hval.oid);
-		printf("[%d] error putting %ju => %d\n", pid, key, val);
 		return;
 	}
 
 	if (OID_IS_NULL(oldval)) {
-		printf("[%d] insert %ju => %d\n", pid, key, val);
+		DEBUGPRINT("[%d] insert %ju => %d\n", pid, key, val);
 	} else {
+		DEBUGPRINT("[%d] update %ju => %d\n", pid, key, val);
 		pmemobj_free(&oldval);
-		printf("[%d] update %ju => %d\n", pid, key, val);
 	}
 }
 
-void tm_map_read(TOID(struct hashmap) h, uint64_t key)
+void tm_map_read(tm_hashmap_t h, uint64_t key)
 {
 	PMEMoid ret = hashmap_get_tm(h, key, NULL);
 	if (!OID_IS_NULL(ret))
-		printf("[%d] get %ju: %d\n", gettid(), key, D_RW(TYPED_VAL(ret))->val);
+		DEBUGPRINT("[%d] get %ju: %d\n", gettid(), key, D_RW((hash_val_t)ret)->val);
 }
 
-void tm_map_delete(TOID(struct hashmap) h, uint64_t key)
+void tm_map_delete(tm_hashmap_t h, uint64_t key)
 {
 	int err = 0;
 	PMEMoid oldval = hashmap_delete_tm(h, key, &err);
 
 	pid_t pid = gettid();
 	if (err) {
-		printf("[%d] failed to delete key %ju\n", pid, key);
+		DEBUGPRINT("[%d] failed to delete key %ju\n", pid, key);
 	} else if (OID_IS_NULL(oldval)) {
-		printf("[%d] %ju not in map\n", pid, key);
+		DEBUGPRINT("[%d] %ju not in map\n", pid, key);
 	} else {
-		printf("[%d] deleted key %ju with val %d\n", pid, key, D_RW(TYPED_VAL(oldval))->val);
+		DEBUGPRINT("[%d] deleted key %ju with val %d\n", pid, key, D_RW((hash_val_t)oldval)->val);
 		pmemobj_free(&oldval);
 	}
 }
 
-void map_print(TOID(struct hashmap) h)
+void map_print(tm_hashmap_t h)
 {
 	printf("{\n");
 	hashmap_foreach(h, print_val, NULL);

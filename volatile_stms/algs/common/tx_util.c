@@ -155,7 +155,7 @@ void tx_vector_empty(struct tx_vec *vec)
 	vec->length = 0;
 }
 
-void tx_vector_empty_unsafe(struct tx_vec *vec)
+void tx_vector_clear(struct tx_vec *vec)
 {
 	memset(vec->arr, 0, vec->capacity * sizeof(void *));
 	vec->length = 0;

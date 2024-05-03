@@ -31,7 +31,7 @@ uint64_t _hash_int(const void *item)
 	return XXH3_64bits_withSeed(item, sizeof(uint64_t), HASH_SEED);
 }
 
-int hashmap_new_cap(PMEMobjpool *pop, TOID(struct hashmap) *h, size_t capacity)
+int hashmap_new_cap(PMEMobjpool *pop, TOID(struct tm_hashmap) *h, size_t capacity)
 {
 	size_t nbuckets;
 	int num_grows = -1;
@@ -42,9 +42,9 @@ int hashmap_new_cap(PMEMobjpool *pop, TOID(struct hashmap) *h, size_t capacity)
 
 	int ret = 0;
 	TX_BEGIN(pop) {
-		TOID(struct hashmap) map = TX_ZNEW(struct hashmap);
-		size_t sz = sizeof(struct buckets) + sizeof(TOID(struct entry)) * nbuckets;
-		TOID(struct buckets) buckets = TX_ZALLOC(struct buckets, sz);
+		TOID(struct tm_hashmap) map = TX_ZNEW(struct tm_hashmap);
+		size_t sz = sizeof(struct tm_hashmap_buckets) + sizeof(TOID(struct tm_hashmap_entry)) * nbuckets;
+		TOID(struct tm_hashmap_buckets) buckets = TX_ZALLOC(struct tm_hashmap_buckets, sz);
 		D_RW(buckets)->num_buckets = nbuckets;
 		D_RW(map)->num_grows = num_grows;
 		D_RW(map)->capacity = nbuckets;
@@ -60,34 +60,34 @@ int hashmap_new_cap(PMEMobjpool *pop, TOID(struct hashmap) *h, size_t capacity)
 	return ret;
 }
 
-int hashmap_new(PMEMobjpool *pop, TOID(struct hashmap) *h)
+int hashmap_new(PMEMobjpool *pop, TOID(struct tm_hashmap) *h)
 {
 	return hashmap_new_cap(pop, h, INIT_CAP);
 }
 
-void hashmap_entry_init(TOID(struct entry) e, uint64_t key, uint64_t hash, PMEMoid value)
+void hashmap_entry_init(TOID(struct tm_hashmap_entry) e, uint64_t key, uint64_t hash, PMEMoid value)
 {
 	D_RW(e)->hash = hash;
 	D_RW(e)->key = key;
 	D_RW(e)->value = value;
-	D_RW(e)->next = TOID_NULL(struct entry);
+	D_RW(e)->next = TOID_NULL(struct tm_hashmap_entry);
 }
 
-TOID(struct entry) hashmap_entry_new_tm(uint64_t key, uint64_t hash, PMEMoid value)
+TOID(struct tm_hashmap_entry) hashmap_entry_new_tm(uint64_t key, uint64_t hash, PMEMoid value)
 {
-	TOID(struct entry) new_entry = PTM_ZNEW(struct entry);
+	TOID(struct tm_hashmap_entry) new_entry = PTM_ZNEW(struct tm_hashmap_entry);
 	hashmap_entry_init(new_entry, key, hash, value);
 	return new_entry;
 }
 
-TOID(struct entry) hashmap_entry_new(uint64_t key, uint64_t hash, PMEMoid value)
+TOID(struct tm_hashmap_entry) hashmap_entry_new(uint64_t key, uint64_t hash, PMEMoid value)
 {
-	TOID(struct entry) new_entry = TX_ZNEW(struct entry);
+	TOID(struct tm_hashmap_entry) new_entry = TX_ZNEW(struct tm_hashmap_entry);
 	hashmap_entry_init(new_entry, key, hash, value);
 	return new_entry;
 }
 
-int hashmap_resize_tm(TOID(struct hashmap) h)
+int hashmap_resize_tm(TOID(struct tm_hashmap) h)
 {
 	int ret = 0;
 	PTM_BEGIN() {
@@ -100,16 +100,16 @@ int hashmap_resize_tm(TOID(struct hashmap) h)
 			goto end;
 
 		// printf("resizing...\n");
-		TOID(struct buckets) old_buckets = PTM_READ(D_RW(h)->buckets);
+		TOID(struct tm_hashmap_buckets) old_buckets = PTM_READ(D_RW(h)->buckets);
 
 		size_t new_cap = TABLE_PRIMES[++num_grows];
-		size_t sz = sizeof(struct buckets) + sizeof(TOID(struct entry)) * new_cap;
-		TOID(struct buckets) new_buckets = PTM_ZALLOC(struct buckets, sz);
+		size_t sz = sizeof(struct tm_hashmap_buckets) + sizeof(TOID(struct tm_hashmap_entry)) * new_cap;
+		TOID(struct tm_hashmap_buckets) new_buckets = PTM_ZALLOC(struct tm_hashmap_buckets, sz);
 		D_RW(new_buckets)->num_buckets = new_cap;
 
 		int i;
 		for (i = 0; i < old_cap; i++) {
-			TOID(struct entry) old_head;
+			TOID(struct tm_hashmap_entry) old_head;
 			while (!TOID_IS_NULL((old_head = PTM_READ(D_RW(old_buckets)->arr[i])))) {
 				int b = PTM_READ(D_RW(old_head)->hash) % new_cap;
 				PTM_WRITE(D_RW(old_buckets)->arr[i], PTM_READ(D_RW(old_head)->next));
@@ -131,7 +131,7 @@ end:	;
 	return ret;
 }
 
-int hashmap_resize(PMEMobjpool *pop, TOID(struct hashmap) h)
+int hashmap_resize(PMEMobjpool *pop, TOID(struct tm_hashmap) h)
 {
 	int old_cap = D_RO(h)->capacity;
 	int num_grows = D_RO(h)->num_grows;
@@ -142,22 +142,22 @@ int hashmap_resize(PMEMobjpool *pop, TOID(struct hashmap) h)
 		return 0;
 
 	// printf("resizing...\n");
-	TOID(struct buckets) old_buckets = D_RO(h)->buckets;
+	TOID(struct tm_hashmap_buckets) old_buckets = D_RO(h)->buckets;
 	size_t new_cap = TABLE_PRIMES[++num_grows];
-	size_t sz = sizeof(struct buckets) + sizeof(TOID(struct entry)) * new_cap;
-	size_t sz_old = sizeof(struct buckets) + sizeof(TOID(struct entry)) * old_cap;
+	size_t sz = sizeof(struct tm_hashmap_buckets) + sizeof(TOID(struct tm_hashmap_entry)) * new_cap;
+	size_t sz_old = sizeof(struct tm_hashmap_buckets) + sizeof(TOID(struct tm_hashmap_entry)) * old_cap;
 
 	int ret = 0;
 	TX_BEGIN(pop) {
 		TX_ADD(h);
-		TOID(struct buckets) new_buckets = TX_ZALLOC(struct buckets, sz);
+		TOID(struct tm_hashmap_buckets) new_buckets = TX_ZALLOC(struct tm_hashmap_buckets, sz);
 		D_RW(new_buckets)->num_buckets = new_cap;
 
 		pmemobj_tx_add_range(old_buckets.oid, 0, sz_old);
 
 		size_t i;
 		for (i = 0; i < old_cap; i++) {
-			TOID(struct entry) old_head;
+			TOID(struct tm_hashmap_entry) old_head;
 			while (!TOID_IS_NULL((old_head = D_RO(old_buckets)->arr[i]))) {
 				int b = D_RO(old_head)->hash % new_cap;
 				D_RW(old_buckets)->arr[i] = D_RO(old_head)->next;
@@ -181,7 +181,7 @@ int hashmap_resize(PMEMobjpool *pop, TOID(struct hashmap) h)
 
 
 /* returns old value old OID_NULL */
-PMEMoid hashmap_put_tm(TOID(struct hashmap) h, uint64_t key, PMEMoid value, int *err)
+PMEMoid hashmap_put_tm(TOID(struct tm_hashmap) h, uint64_t key, PMEMoid value, int *err)
 {
 	uint64_t key_hash = GET_HASH(&key);
 
@@ -190,14 +190,14 @@ PMEMoid hashmap_put_tm(TOID(struct hashmap) h, uint64_t key, PMEMoid value, int 
 	int ret = 0;
 	PTM_BEGIN() {
 		int b = key_hash % PTM_READ(D_RW(h)->capacity);
-		TOID(struct buckets) buckets = PTM_READ(D_RW(h)->buckets);
-		TOID(struct entry) entry = PTM_READ(D_RW(buckets)->arr[b]);
+		TOID(struct tm_hashmap_buckets) buckets = PTM_READ(D_RW(h)->buckets);
+		TOID(struct tm_hashmap_entry) entry = PTM_READ(D_RW(buckets)->arr[b]);
 		if (TOID_IS_NULL(entry)) {
-			TOID(struct entry) new_entry = hashmap_entry_new_tm(key, key_hash, value);
+			TOID(struct tm_hashmap_entry) new_entry = hashmap_entry_new_tm(key, key_hash, value);
 			PTM_WRITE(D_RW(buckets)->arr[b], new_entry);
 			PTM_WRITE(D_RW(h)->length, (PTM_READ(D_RW(h)->length) + 1));
 		} else {
-			TOID(struct entry) prev;
+			TOID(struct tm_hashmap_entry) prev;
 			do {
 				prev = entry;
 				if (PTM_READ(D_RW(entry)->key) == key) {
@@ -209,7 +209,7 @@ PMEMoid hashmap_put_tm(TOID(struct hashmap) h, uint64_t key, PMEMoid value, int 
 			} while (!TOID_IS_NULL((entry = PTM_READ(D_RW(entry)->next))));
 
 			if (!found) {
-				TOID(struct entry) new_entry = hashmap_entry_new_tm(key, key_hash, value);
+				TOID(struct tm_hashmap_entry) new_entry = hashmap_entry_new_tm(key, key_hash, value);
 				PTM_WRITE(D_RW(prev)->next, new_entry);
 				PTM_WRITE(D_RW(h)->length, (PTM_READ(D_RW(h)->length) + 1));
 			}
@@ -231,7 +231,7 @@ PMEMoid hashmap_put_tm(TOID(struct hashmap) h, uint64_t key, PMEMoid value, int 
 	return oldval;
 }
 
-PMEMoid hashmap_put(PMEMobjpool *pop, TOID(struct hashmap) h, uint64_t key, PMEMoid value, int *err)
+PMEMoid hashmap_put(PMEMobjpool *pop, TOID(struct tm_hashmap) h, uint64_t key, PMEMoid value, int *err)
 {
 	uint64_t key_hash = GET_HASH(&key);
 
@@ -240,18 +240,18 @@ PMEMoid hashmap_put(PMEMobjpool *pop, TOID(struct hashmap) h, uint64_t key, PMEM
 	int ret = 0;
 
 	int b = key_hash % D_RW(h)->capacity;
-	TOID(struct buckets) buckets = D_RW(h)->buckets;
-	TOID(struct entry) entry = D_RW(buckets)->arr[b];
+	TOID(struct tm_hashmap_buckets) buckets = D_RW(h)->buckets;
+	TOID(struct tm_hashmap_entry) entry = D_RW(buckets)->arr[b];
 
 	TX_BEGIN(pop) {
 		if (TOID_IS_NULL(entry)) {
-			TOID(struct entry) new_entry = hashmap_entry_new(key, key_hash, value);
+			TOID(struct tm_hashmap_entry) new_entry = hashmap_entry_new(key, key_hash, value);
 			TX_ADD_FIELD(buckets, arr[b]);
 			D_RW(buckets)->arr[b] = new_entry;
 			TX_ADD_FIELD(h, length);
 			D_RW(h)->length++;
 		} else {
-			TOID(struct entry) prev;
+			TOID(struct tm_hashmap_entry) prev;
 			do {
 				prev = entry;
 				if (D_RW(entry)->key == key) {
@@ -264,7 +264,7 @@ PMEMoid hashmap_put(PMEMobjpool *pop, TOID(struct hashmap) h, uint64_t key, PMEM
 			} while (!TOID_IS_NULL((entry = D_RW(entry)->next)));
 
 			if (!found) {
-				TOID(struct entry) new_entry = hashmap_entry_new(key, key_hash, value);
+				TOID(struct tm_hashmap_entry) new_entry = hashmap_entry_new(key, key_hash, value);
 				TX_ADD_FIELD(prev, next);
 				D_RW(prev)->next = new_entry;
 				TX_ADD_FIELD(h, length);
@@ -288,7 +288,7 @@ PMEMoid hashmap_put(PMEMobjpool *pop, TOID(struct hashmap) h, uint64_t key, PMEM
 	return oldval;
 }
 
-PMEMoid hashmap_get_tm(TOID(struct hashmap) h, uint64_t key, int *err)
+PMEMoid hashmap_get_tm(TOID(struct tm_hashmap) h, uint64_t key, int *err)
 {
 	uint64_t key_hash = GET_HASH(&key);
 	PMEMoid retval = OID_NULL;
@@ -296,9 +296,9 @@ PMEMoid hashmap_get_tm(TOID(struct hashmap) h, uint64_t key, int *err)
 	int ret = 0;
 	PTM_BEGIN() {
 		int bucket = key_hash % PTM_READ(D_RW(h)->capacity);
-		TOID(struct buckets) buckets = PTM_READ(D_RW(h)->buckets);
+		TOID(struct tm_hashmap_buckets) buckets = PTM_READ(D_RW(h)->buckets);
 
-		TOID(struct entry) entry;
+		TOID(struct tm_hashmap_entry) entry;
 		for (entry = PTM_READ(D_RW(buckets)->arr[bucket]); 
 			!TOID_IS_NULL(entry);
 			entry = PTM_READ(D_RW(entry)->next)) 
@@ -321,7 +321,7 @@ PMEMoid hashmap_get_tm(TOID(struct hashmap) h, uint64_t key, int *err)
 	return retval;
 }
 
-PMEMoid hashmap_delete_tm(TOID(struct hashmap) h, uint64_t key, int *err)
+PMEMoid hashmap_delete_tm(TOID(struct tm_hashmap) h, uint64_t key, int *err)
 {
 	uint64_t key_hash = GET_HASH(&key);
 
@@ -330,8 +330,8 @@ PMEMoid hashmap_delete_tm(TOID(struct hashmap) h, uint64_t key, int *err)
 	PMEMoid oldval = OID_NULL;
 	PTM_BEGIN() {
 		int b = key_hash % PTM_READ(D_RW(h)->capacity);
-		TOID(struct buckets) buckets = PTM_READ(D_RW(h)->buckets);
-		TOID(struct entry) head = PTM_READ(D_RW(buckets)->arr[b]);
+		TOID(struct tm_hashmap_buckets) buckets = PTM_READ(D_RW(h)->buckets);
+		TOID(struct tm_hashmap_entry) head = PTM_READ(D_RW(buckets)->arr[b]);
 		if (TOID_IS_NULL(head))
 			goto end;
 
@@ -343,7 +343,7 @@ PMEMoid hashmap_delete_tm(TOID(struct hashmap) h, uint64_t key, int *err)
 			goto end;
 		}
 
-		TOID(struct entry) prev = head;
+		TOID(struct tm_hashmap_entry) prev = head;
 		for (head = PTM_READ(D_RW(head)->next);
 			!TOID_IS_NULL(head);
 			prev = head, head = PTM_READ(D_RW(head)->next))
@@ -378,16 +378,16 @@ pTM_err:
 	return OID_NULL;
 }
 
-int hashmap_contains_tm(TOID(struct hashmap) h, uint64_t key)
+int hashmap_contains_tm(TOID(struct tm_hashmap) h, uint64_t key)
 {
 	uint64_t key_hash = GET_HASH(&key);
 
 	int ret = 0;
 	PTM_BEGIN() {
 		int bucket = key_hash % PTM_READ(D_RW(h)->capacity);
-		TOID(struct buckets) buckets = PTM_READ(D_RW(h)->buckets);
+		TOID(struct tm_hashmap_buckets) buckets = PTM_READ(D_RW(h)->buckets);
 
-		TOID(struct entry) entry;
+		TOID(struct tm_hashmap_entry) entry;
 		for (entry = PTM_READ(D_RW(buckets)->arr[bucket]); 
 			!TOID_IS_NULL(entry);
 			entry = PTM_READ(D_RW(entry)->next)) 
@@ -405,10 +405,10 @@ int hashmap_contains_tm(TOID(struct hashmap) h, uint64_t key)
 	return ret;
 }
 
-int hashmap_foreach(TOID(struct hashmap) h, int (*cb)(uint64_t key, PMEMoid value, void *arg), void *arg)
+int hashmap_foreach(TOID(struct tm_hashmap) h, int (*cb)(uint64_t key, PMEMoid value, void *arg), void *arg)
 {
-	TOID(struct buckets) buckets = D_RO(h)->buckets;
-	TOID(struct entry) var;
+	TOID(struct tm_hashmap_buckets) buckets = D_RO(h)->buckets;
+	TOID(struct tm_hashmap_entry) var;
 
 	for (size_t i = 0; i < D_RO(buckets)->num_buckets; i++)  {
 		for (var = D_RW(buckets)->arr[i]; 
@@ -424,13 +424,13 @@ int hashmap_foreach(TOID(struct hashmap) h, int (*cb)(uint64_t key, PMEMoid valu
 	return 0;
 }
 
-int hashmap_foreach_tm(TOID(struct hashmap) h, int (*cb)(uint64_t key, PMEMoid value, void *arg), void *arg)
+int hashmap_foreach_tm(TOID(struct tm_hashmap) h, int (*cb)(uint64_t key, PMEMoid value, void *arg), void *arg)
 {
 	int err = 0;
 	int ret = 0;
 	PTM_BEGIN() {
-		TOID(struct buckets) buckets = PTM_READ(D_RW(h)->buckets);
-		TOID(struct entry) var;
+		TOID(struct tm_hashmap_buckets) buckets = PTM_READ(D_RW(h)->buckets);
+		TOID(struct tm_hashmap_entry) var;
 
 		for (size_t i = 0; i < PTM_READ(D_RW(buckets)->num_buckets); i++)  {
 			for (var = PTM_READ(D_RW(buckets)->arr[i]); 
@@ -455,19 +455,19 @@ outer:	;
 	return ret;
 }
 
-int _hashmap_destroy_entries(PMEMobjpool *pop, TOID(struct hashmap) h)
+int _hashmap_destroy_entries(PMEMobjpool *pop, TOID(struct tm_hashmap) h)
 {
 	int ret = 0;
 	TX_BEGIN(pop) {		
 		if (D_RO(h)->length > 0) {
-			TOID(struct buckets) buckets = D_RO(h)->buckets;
+			TOID(struct tm_hashmap_buckets) buckets = D_RO(h)->buckets;
 			int i;
-			TOID(struct entry) head;
+			TOID(struct tm_hashmap_entry) head;
 			for (i = 0; i < D_RO(h)->capacity; i++) {
 				head = D_RO(buckets)->arr[i];
 				if (TOID_IS_NULL(head)) continue;
 
-				TOID(struct entry) e;
+				TOID(struct tm_hashmap_entry) e;
 				while (!TOID_IS_NULL((e = D_RO(head)->next))) {
 					D_RW(buckets)->arr[i] = e;
 					pmemobj_tx_free(D_RO(head)->value);
@@ -475,7 +475,7 @@ int _hashmap_destroy_entries(PMEMobjpool *pop, TOID(struct hashmap) h)
 					head = e;
 				}
 				TX_FREE(head);
-				D_RW(buckets)->arr[i] = TOID_NULL(struct entry);
+				D_RW(buckets)->arr[i] = TOID_NULL(struct tm_hashmap_entry);
 			}
 		}
 	} TX_ONABORT {
@@ -486,18 +486,18 @@ int _hashmap_destroy_entries(PMEMobjpool *pop, TOID(struct hashmap) h)
 	return ret;
 }
 
-int hashmap_destroy(PMEMobjpool *pop, TOID(struct hashmap) *h)
+int hashmap_destroy(PMEMobjpool *pop, TOID(struct tm_hashmap) *h)
 {
-	TOID(struct hashmap) map = *h;
+	TOID(struct tm_hashmap) map = *h;
 	int ret = _hashmap_destroy_entries(pop, map);
 
 	if (ret) return ret;
 
 	TX_BEGIN(pop) {
 		TX_FREE(D_RO(map)->buckets);
-		D_RW(map)->buckets = TOID_NULL(struct buckets);
+		D_RW(map)->buckets = TOID_NULL(struct tm_hashmap_buckets);
 		TX_FREE(map);
-		*h = TOID_NULL(struct hashmap);
+		*h = TOID_NULL(struct tm_hashmap);
 	} TX_ONABORT {
 		DEBUGABORT();
 		ret = 1;

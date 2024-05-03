@@ -1,11 +1,14 @@
+#define _GNU_SOURCE
+#include <unistd.h>
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <pthread.h>
 #include <libpmemobj.h>
 
 #define RAII
 #include "ptm.h"
+#include "bench_utils.h"
 
 POBJ_LAYOUT_BEGIN(simple_test);
 POBJ_LAYOUT_ROOT(simple_test, struct root);
@@ -41,7 +44,7 @@ void *process_simple(void *arg)
 	PTM_BEGIN() {
 		int balance1 = PTM_READ(accsp->balance1);
 		int balance2 = PTM_READ(accsp->balance2);
-		sleep(1);
+		msleep(500);
 		PTM_WRITE(accsp->balance1, (balance1 + price));
 		PTM_WRITE(accsp->balance2, (balance2 - price));
 	} PTM_ONABORT {

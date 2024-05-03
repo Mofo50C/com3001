@@ -11,7 +11,7 @@
 #include "stm.h" 
 
 struct root {
-    struct hashmap *map;
+    tm_hashmap_t *map;
 };
 
 static struct root root = {.map = NULL};
@@ -21,7 +21,7 @@ struct worker_args {
 	int val;
 	int key1;
 	int key2;
-	struct hashmap *map;
+	tm_hashmap_t *map;
 };
 
 int main(int argc, char const *argv[])
@@ -31,7 +31,7 @@ int main(int argc, char const *argv[])
 		return 1;
 	}
 
-	struct hashmap *map = root.map;
+	tm_hashmap_t *map = root.map;
 
 	STM_TH_ENTER();
 

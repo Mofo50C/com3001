@@ -70,7 +70,7 @@ void tx_vector_destroy(struct tx_vec **vecp);
 
 void tx_vector_empty(struct tx_vec *vec);
 
-void tx_vector_empty_unsafe(struct tx_vec *vec);
+void tx_vector_clear(struct tx_vec *vec);
 
 int tx_util_is_zeroed(const void *addr, size_t len);
 

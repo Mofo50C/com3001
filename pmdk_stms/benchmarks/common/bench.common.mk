@@ -14,3 +14,6 @@ LIBS+=-lpthread -lpmemobj -lpmem
 .PHONY: build-algs
 build-algs:
 	$(MAKE) -C $(ALGS_DIR)
+
+build-bench-utils:
+	$(MAKE) -C $(ROOT_DIR)/common

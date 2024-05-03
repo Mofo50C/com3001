@@ -10,13 +10,14 @@
 
 #define RAII
 #include "ptm.h" 
+#include "bench_utils.h"
 
 POBJ_LAYOUT_BEGIN(hashmap_transfer);
 POBJ_LAYOUT_ROOT(hashmap_transfer, struct root);
 POBJ_LAYOUT_END(hashmap_transfer);
 
 struct root {
-    TOID(struct hashmap) map;
+    tm_hashmap_t map;
 };
 
 PMEMobjpool *pop;
@@ -26,7 +27,8 @@ struct worker_args {
 	int val;
 	int key1;
 	int key2;
-	TOID(struct hashmap) map;
+	int sleep;
+	tm_hashmap_t map;
 };
 
 void *worker_new(void *arg)
@@ -48,10 +50,12 @@ void *worker_new(void *arg)
 		struct hash_val *valp1 = pmemobj_direct(val1);
 		struct hash_val *valp2 = pmemobj_direct(val2);
 
-		TOID(struct hash_val) new1 = PTM_ZNEW(struct hash_val);
+		hash_val_t new1 = PTM_ZNEW(struct hash_val);
 		D_RW(new1)->val = PTM_READ_DIRECT(&valp1->val, sizeof(int)) - args.val;
-		TOID(struct hash_val) new2 = PTM_ZNEW(struct hash_val);
+		hash_val_t new2 = PTM_ZNEW(struct hash_val);
 		D_RW(new2)->val = PTM_READ_DIRECT(&valp2->val, sizeof(int)) + args.val;
+
+		msleep(args.sleep);
 
 		int err = 0;
 		hashmap_put_tm(args.map, args.key1, new1.oid, &err);
@@ -77,8 +81,8 @@ void *worker_new(void *arg)
 
 int main(int argc, char const *argv[])
 {
-	if (argc != 6) {
-		printf("usage: %s <pool_file> <num_threads> <num_accs> <init_balance> <price>\n", argv[0]);
+	if (argc != 7) {
+		printf("usage: %s <pool_file> <num_threads> <sleep> <num_accs> <init_balance> <price>\n", argv[0]);
 		return 1;
 	}
 
@@ -88,14 +92,20 @@ int main(int argc, char const *argv[])
 		return 1;
 	}
 
-	int num_accs = atoi(argv[3]);
+	int msecs = atoi(argv[3]);
+	if (msecs < 0) {
+		printf("<sleep> cannot be negative milliseconds\n");
+		return 1;
+	}
+
+	int num_accs = atoi(argv[4]);
 	if (num_accs < 2) {
 		printf("<num_accs> must be at least 2\n");
 		return 1;
 	}
 
-	int init_balance = atoi(argv[4]);
-	int price = atoi(argv[5]);
+	int init_balance = atoi(argv[5]);
+	int price = atoi(argv[6]);
 
 	const char *path = argv[1];
 	if (access(path, F_OK) != 0) {
@@ -122,7 +132,7 @@ int main(int argc, char const *argv[])
 		return 1;
 	}
 
-	TOID(struct hashmap) map = rootp->map;
+	tm_hashmap_t map = rootp->map;
 
 	size_t i;
 	for (i = 0; i < num_accs; i++) {
@@ -140,6 +150,7 @@ int main(int argc, char const *argv[])
 	for (i = 0; i < num_threads; i++) {
 		struct worker_args *args = &arg_data[i];
 		args->idx = i + 1;
+		args->sleep = msecs;
 		args->map = map;
 		args->val = price;
 		args->key1 = rand() % num_accs;

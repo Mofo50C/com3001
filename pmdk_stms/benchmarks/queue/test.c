@@ -16,7 +16,7 @@ POBJ_LAYOUT_ROOT(queue_test, struct root);
 POBJ_LAYOUT_END(queue_test);
 
 struct root {
-    TOID(struct queue) queue;
+    tm_queue_t queue;
 };
 
 PMEMobjpool *pop;
@@ -24,7 +24,7 @@ PMEMobjpool *pop;
 struct worker_args {
 	int idx;
 	int val;
-	TOID(struct queue) queue;
+	tm_queue_t queue;
 };
 
 int main(int argc, char const *argv[])
@@ -59,7 +59,7 @@ int main(int argc, char const *argv[])
 		return 1;
 	}
 
-	TOID(struct queue) queue = rootp->queue;
+	tm_queue_t queue = rootp->queue;
 
 	PTM_TH_ENTER(pop);
 

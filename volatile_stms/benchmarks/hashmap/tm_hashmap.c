@@ -68,6 +68,7 @@ int hashmap_new_cap(struct tm_hashmap **h, size_t capacity)
 	map->capacity = nbuckets;
 	map->buckets = buckets;
 	map->num_grows = num_grows;
+	map->length = 0;
 
 	return 0;
 }
@@ -105,7 +106,7 @@ int hashmap_resize_tm(struct tm_hashmap *h)
 		int num_grows = STM_READ(h->num_grows);
 		int length = STM_READ(h->length);
 		if (((length / (float)old_cap) < MAX_LOAD_FACTOR) || (num_grows >= MAX_GROWS))
-			goto end_return;
+			goto end;
 
 		struct tm_hashmap_buckets *old_buckets = STM_READ(h->buckets);
 
@@ -116,12 +117,18 @@ int hashmap_resize_tm(struct tm_hashmap *h)
 
 		int i;
 		for (i = 0; i < old_cap; i++) {
-			struct tm_hashmap_entry *old_head;
-			while ((old_head = STM_READ(old_buckets->arr[i])) != NULL) {
-				int b = STM_READ(old_head->hash) % new_cap;
-				STM_WRITE(old_buckets->arr[i], STM_READ(old_head->next));
-				STM_WRITE(old_head->next, new_buckets->arr[b]);
-				STM_WRITE(new_buckets->arr[b], old_head);
+			struct tm_hashmap_entry *old_head = STM_READ_FIELD(old_buckets, arr[i]);
+			if (old_head == NULL)
+				continue;
+
+			struct tm_hashmap_entry *temp;
+			while (old_head != NULL) {
+				temp = STM_READ_FIELD(old_head, next);
+				int b = STM_READ_FIELD(old_head, hash) % new_cap;
+				struct tm_hashmap_entry *new_head = new_buckets->arr[b];
+				STM_WRITE_FIELD(old_head, next, new_head);
+				new_buckets->arr[b] = old_head;
+				old_head = temp;
 			}
 		}
 
@@ -129,7 +136,7 @@ int hashmap_resize_tm(struct tm_hashmap *h)
 		STM_WRITE(h->capacity, new_cap);
 		STM_WRITE(h->buckets, new_buckets);
 		STM_FREE(old_buckets);
-end_return:	;
+end:	;
 	} STM_ONABORT {
 		DEBUGABORT();
 		ret = -1;
@@ -160,12 +167,18 @@ int hashmap_resize(struct tm_hashmap *h)
 
 	int i;
 	for (i = 0; i < old_cap; i++) {
-		struct tm_hashmap_entry *old_head;
-		while ((old_head = old_buckets->arr[i]) != NULL) {
+		struct tm_hashmap_entry *old_head = old_buckets->arr[i];
+		if (old_head == NULL)
+			continue;
+
+		struct tm_hashmap_entry *temp;
+		while (old_head != NULL) {
+			temp = old_head->next;
 			int b = old_head->hash % new_cap;
-			old_buckets->arr[i] = old_head->next;
-			old_head->next = new_buckets->arr[b];
+			struct tm_hashmap_entry *new_head = new_buckets->arr[b];
+			old_head->next = new_head;
 			new_buckets->arr[b] = old_head;
+			old_head = temp;
 		}
 	}
 

@@ -70,10 +70,7 @@ void tm_map_insert(tm_hashmap_t *h, uint64_t key, int val)
 	if (err) {
 		DEBUGPRINT("[%d] error putting %ju => %d\n", pid, key, val);
 		free(new_val);
-		return;
-	}
-
-	if (oldval) {
+	} else if (oldval) {
 		DEBUGPRINT("[%d] update %ju => %d\n", pid, key, val);
 		free(oldval);
 	} else {

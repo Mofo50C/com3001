@@ -39,17 +39,17 @@ int main(int argc, char const *argv[])
 	STM_TH_ENTER();
 
 	size_t i;
-	for (i = 0; i < 5; i++) {
+	for (i = 0; i < 100; i++) {
 		tm_enqueue_back(queue, i);
-		print_queue(queue);
+		// print_queue(queue);
 	}
 
-	for (i = 0; i < 5; i++) {
-		tm_dequeue_front(queue);
-		print_queue(queue);
-	}
+	// for (i = 0; i < 5; i++) {
+	// 	tm_dequeue_front(queue);
+	// 	print_queue(queue);
+	// }
 	
-	tm_dequeue_back(queue);
+	// tm_dequeue_back(queue);
 
 	if (queue_destroy(&root.queue))
 		printf("error in destroy\n");

@@ -36,7 +36,7 @@ int main(int argc, char const *argv[])
 	STM_TH_ENTER();
 
     size_t i;
-    for (i = 0; i < 40; i++) {
+    for (i = 0; i < 10000; i++) {
         // map_insert(map, i, 21);
 		tm_map_insert(map, i, 21);
     }

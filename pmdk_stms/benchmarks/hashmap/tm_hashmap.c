@@ -95,11 +95,9 @@ int hashmap_resize_tm(TOID(struct tm_hashmap) h)
 		int num_grows = PTM_READ(D_RW(h)->num_grows);
 		int length = PTM_READ(D_RW(h)->length);
 
-		// printf("len: %d cap: %d grows: %d\n", length, old_cap, num_grows);
 		if (((length / (float)old_cap) < MAX_LOAD_FACTOR) || (num_grows >= MAX_GROWS))
 			goto end;
 
-		// printf("resizing...\n");
 		TOID(struct tm_hashmap_buckets) old_buckets = PTM_READ(D_RW(h)->buckets);
 
 		size_t new_cap = TABLE_PRIMES[++num_grows];
@@ -109,12 +107,18 @@ int hashmap_resize_tm(TOID(struct tm_hashmap) h)
 
 		int i;
 		for (i = 0; i < old_cap; i++) {
-			TOID(struct tm_hashmap_entry) old_head;
-			while (!TOID_IS_NULL((old_head = PTM_READ(D_RW(old_buckets)->arr[i])))) {
-				int b = PTM_READ(D_RW(old_head)->hash) % new_cap;
-				PTM_WRITE(D_RW(old_buckets)->arr[i], PTM_READ(D_RW(old_head)->next));
-				PTM_WRITE(D_RW(old_head)->next, D_RW(new_buckets)->arr[b]);
-				PTM_WRITE(D_RW(new_buckets)->arr[b], old_head);
+			TOID(struct tm_hashmap_entry) old_head = PTM_READ_FIELD(old_buckets, arr[i]);
+			if (TOID_IS_NULL(old_head))
+				continue;
+
+			TOID(struct tm_hashmap_entry) temp;
+			while (!TOID_IS_NULL(old_head)) {
+				temp = PTM_READ_FIELD(old_head, next);
+				int b = PTM_READ_FIELD(old_head, hash) % new_cap;
+				TOID(struct tm_hashmap_entry) new_head = D_RO(new_buckets)->arr[b];
+				PTM_WRITE_FIELD(old_head, next, new_head);
+				D_RW(new_buckets)->arr[b] = old_head;
+				old_head = temp;
 			}
 		}
 

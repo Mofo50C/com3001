@@ -66,9 +66,9 @@ int main(int argc, char const *argv[])
 	PTM_TH_ENTER(pop);
 
     size_t i;
-    for (i = 0; i < 40; i++) {
-        // map_insert(map, i, 21);
-		tm_map_insert(map, i, 21);
+    for (i = 0; i < 3000; i++) {
+        map_insert(map, i, 21);
+		// tm_map_insert(map, i, 21);
     }
 
 	PTM_TH_EXIT();

@@ -90,6 +90,7 @@ void norec_rdset_add(void *pdirect, void *src, size_t size)
 		.pval = pval,
 		.size = size
 	};
+
 	if (tx_vector_append(tx->read_set, &e) < 0) {
 		err = errno;
 		goto err_clean;

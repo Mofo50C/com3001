@@ -65,7 +65,10 @@ norec_thread_exit()
 	_ret;\
 })
 
-#define NOREC_FREE TX_FREE
+// #define NOREC_FREE TX_FREE
+#define NOREC_FREE(o)\
+norec_tx_free((o).oid)
+
 #define NOREC_ALLOC TX_ALLOC
 #define NOREC_NEW TX_NEW
 #define NOREC_ZNEW TX_ZNEW

@@ -25,6 +25,8 @@ int tml_tx_end(void);
 
 void tml_tx_write(void);
 
+void tml_tx_free(PMEMoid poid);
+
 void tml_tx_abort(void);
 
 void tml_tx_read(void);

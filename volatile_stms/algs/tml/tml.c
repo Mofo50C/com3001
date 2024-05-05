@@ -98,7 +98,9 @@ void *tml_tx_zalloc(size_t size)
 
 void tml_tx_commit(void)
 {
-	tx_reclaim_frees();
+	if (tx_get_level() == 0) {
+		tx_reclaim_frees();
+	}
 	tx_commit();
 }
 

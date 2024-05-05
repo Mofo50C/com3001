@@ -6,7 +6,7 @@
 #include <stdatomic.h>
 #include "tx.h"
 #include "norec_base.h"
-#include "norec_util.h"
+#include "tx_util.h"
 #include "util.h"
 
 #define VEC_INIT 8
@@ -19,6 +19,7 @@ struct tx_meta {
 	int level;
 	int num_retries;
 	int num_commits;
+	struct tx_vec *free_list;
 	struct tx_vec *read_set;
 	struct tx_vec *write_set;
 	struct tx_hash *wrset_lookup;
@@ -150,6 +151,33 @@ err_abort:
 	pmemobj_tx_abort(err);
 }
 
+void norec_tx_free(PMEMoid poid)
+{
+	struct tx_meta *tx = get_tx_meta();
+
+	int i;
+	for (i = 0; i < tx->free_list->length; i++)
+	{
+		struct tx_vec_entry *e = &tx->free_list->arr[i];
+		if (OID_EQUALS(e->oid, poid)) {
+			e->oid = OID_NULL;
+			break;
+		}
+	}
+
+	struct tx_vec_entry e = {
+		.oid = poid,
+		.addr = NULL,
+		.pval = NULL,
+		.size = 0
+	};
+
+	if (tx_vector_append(tx->free_list, &e, NULL)) {
+		DEBUGLOG("tx_free failed");
+		pmemobj_tx_abort(errno);
+	}
+}
+
 void norec_validate(void)
 {
 	struct tx_meta *tx = get_tx_meta();
@@ -186,6 +214,8 @@ void norec_thread_enter(PMEMobjpool *pop)
 	tx->tid = gettid();
 	tx->pop = pop;
 	tx->num_retries = 0;
+	if (tx_vector_init(&tx->free_list))
+		goto err_abort;
 
 	if (tx_vector_init(&tx->write_set))
 		goto err_abort;
@@ -207,6 +237,7 @@ void norec_thread_exit(void)
 {
 	struct tx_meta *tx = get_tx_meta();
 	tx_add_metrics(tx->num_retries, tx->num_commits);
+	tx_vector_destroy(&tx->free_list);
 	tx_vector_destroy(&tx->write_set);
 	tx_vector_destroy(&tx->read_set);
 	tx_hash_destroy(&tx->wrset_lookup);
@@ -237,6 +268,22 @@ int norec_tx_begin(jmp_buf env)
 	return pmemobj_tx_begin(tx->pop, env, TX_PARAM_NONE, TX_PARAM_NONE);
 }
 
+void tx_reclaim_frees(void)
+{
+	struct tx_meta *tx = get_tx_meta();
+	struct tx_vec_entry *entry;
+	int i;
+	for (i = 0; i < tx->free_list->length; i++) {
+		entry = &tx->free_list->arr[i];
+
+		// fprintf(stderr, "[%d] before freeing...\n", tx->tid);
+		DEBUGPRINT("[%d] freeing...", tx->tid);
+		if (!OID_IS_NULL(entry->oid))
+			pmemobj_tx_free(entry->oid);
+		// fprintf(stderr, "[%d] after freeing...\n", tx->tid);
+	}
+}
+
 void norec_tx_commit(void)
 {
 	struct tx_meta *tx = get_tx_meta();
@@ -257,11 +304,14 @@ void norec_tx_commit(void)
 		DEBUGPRINT("[%d] writing...", tx->tid);
 		pmemobj_tx_add_range_direct(entry->addr, entry->size);
 		memcpy(entry->addr, entry->pval, entry->size);
-
 	}
 
-	DEBUGPRINT("[%d] committing...", tx->tid);
+	// printf("[%d] before...\n", tx->tid);
+	tx_reclaim_frees();
+	// printf("[%d] after...\n", tx->tid);
 	pmemobj_tx_commit();
+
+	DEBUGPRINT("[%d] committing...", tx->tid);
 }
 
 void norec_tx_process(void)
@@ -281,6 +331,7 @@ int norec_tx_end(void)
 	if (tx->level > 0) {
 		tx->level--;
 	} else {
+		tx_vector_clear(tx->free_list);
 		tx_vector_empty(tx->write_set);
 		tx_vector_empty(tx->read_set);
 		tx_hash_empty(tx->wrset_lookup);

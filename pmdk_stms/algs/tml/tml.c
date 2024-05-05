@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdatomic.h>
 #include "tx.h"
+#include "tx_util.h"
 #include "tml_base.h"
 #include "util.h"
 
@@ -15,6 +16,7 @@ struct tx_meta {
 	int level;
 	int num_retries;
 	int num_commits;
+	struct tx_vec *free_list;
 };
 
 static struct tx_meta *get_tx_meta(void)
@@ -55,11 +57,20 @@ void tml_thread_enter(PMEMobjpool *pop)
 	tx->tid = gettid();
 	tx->pop = pop;
 	tx->num_retries = 0;
+	if (tx_vector_init(&tx->free_list))
+		goto err_abort;
+
+	return;
+
+err_abort:
+	DEBUGLOG("failed to init");
+	abort();
 }
 
 void tml_thread_exit(void) {
 	struct tx_meta *tx = get_tx_meta();
 	tx_add_metrics(tx->num_retries, tx->num_commits);
+	tx_vector_destroy(&tx->free_list);
 }
 
 void tml_startup(void) {}
@@ -87,8 +98,26 @@ int tml_tx_begin(jmp_buf env)
 	return pmemobj_tx_begin(tx->pop, env, TX_PARAM_NONE, TX_PARAM_NONE);
 }
 
+void tx_reclaim_frees(void)
+{
+	struct tx_meta *tx = get_tx_meta();
+	struct tx_vec_entry *entry;
+	int i;
+	for (i = 0; i < tx->free_list->length; i++) {
+		entry = &tx->free_list->arr[i];
+
+		DEBUGPRINT("[%d] freeing...", tx->tid);
+		if (!OID_IS_NULL(entry->oid))
+			pmemobj_tx_free(entry->oid);
+	}
+}
+
 void tml_tx_commit(void)
 {
+	struct tx_meta *tx = get_tx_meta();
+	if (tx->level == 0) {
+		tx_reclaim_frees();
+	}
 	pmemobj_tx_commit();
 }
 
@@ -109,6 +138,8 @@ int tml_tx_end(void)
 	if (tx->level > 0) {
 		tx->level--;
 	} else {
+		tx_vector_clear(tx->free_list);
+
 		if (!tx->retry && !pmemobj_tx_errno()) {
 			tx->num_commits++;
 		}
@@ -118,6 +149,33 @@ int tml_tx_end(void)
 			glb = tx->loc + 1;
 	}
 	return pmemobj_tx_end();
+}
+
+void tml_tx_free(PMEMoid poid)
+{
+	struct tx_meta *tx = get_tx_meta();
+
+	int i;
+	for (i = 0; i < tx->free_list->length; i++)
+	{
+		struct tx_vec_entry *e = &tx->free_list->arr[i];
+		if (OID_EQUALS(e->oid, poid)) {
+			e->oid = OID_NULL;
+			break;
+		}
+	}
+
+	struct tx_vec_entry e = {
+		.oid = poid,
+		.addr = NULL,
+		.pval = NULL,
+		.size = 0
+	};
+
+	if (tx_vector_append(tx->free_list, &e, NULL)) {
+		DEBUGLOG("tx_free failed");
+		pmemobj_tx_abort(errno);
+	}
 }
 
 void tml_tx_write(void)

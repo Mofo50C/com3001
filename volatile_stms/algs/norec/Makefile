@@ -1,3 +1,3 @@
-SRCS+=norec.c norec_util.c
+SRCS+=norec.c
 
 include ../common/Makefile.common

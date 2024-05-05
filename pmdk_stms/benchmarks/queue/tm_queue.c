@@ -47,12 +47,13 @@ int queue_push_back_tm(TOID(struct tm_queue) q, int value)
         if (TOID_IS_NULL(back) && TOID_IS_NULL(front)) {
             PTM_WRITE_FIELD(q, back, new_tail);
             PTM_WRITE_FIELD(q, front, new_tail);
-        } else {
+        } else if (!TOID_IS_NULL(front)) {
             D_RW(new_tail)->prev = back;
             PTM_WRITE_FIELD(back, next, new_tail);
             PTM_WRITE_FIELD(q, back, new_tail);
         }
-        PTM_WRITE_FIELD(q, length, (PTM_READ_FIELD(q, length) + 1));
+        size_t len = PTM_READ_FIELD(q, length) + 1;
+        PTM_WRITE_FIELD(q, length, len);
     } PTM_ONABORT {
         DEBUGABORT();
         ret = 1;
@@ -72,12 +73,13 @@ int queue_push_front_tm(TOID(struct tm_queue) q, int value)
         if (TOID_IS_NULL(back) && TOID_IS_NULL(front)) {
             PTM_WRITE_FIELD(q, back, new_head);
             PTM_WRITE_FIELD(q, front, new_head);
-        } else {
+        } else if (!TOID_IS_NULL(front)) {
             D_RW(new_head)->next = front;
             PTM_WRITE_FIELD(front, prev, new_head);
             PTM_WRITE_FIELD(q, front, new_head);
         }
-        PTM_WRITE_FIELD(q, length, (PTM_READ_FIELD(q, length) + 1));
+        size_t len = PTM_READ_FIELD(q, length) + 1;
+        PTM_WRITE_FIELD(q, length, len);
     } PTM_ONABORT {
         DEBUGABORT();
         ret = 1;
@@ -92,7 +94,7 @@ int queue_pop_back_tm(TOID(struct tm_queue) q, int *retval)
     int ret = 0;
     PTM_BEGIN() {
         TOID(struct tm_queue_entry) back = PTM_READ_FIELD(q, back);
-        if (TOID_IS_NULL(PTM_READ_FIELD(q, front)) && TOID_IS_NULL(back))
+        if (TOID_IS_NULL(back))
             goto end_empty;
 
         succ = 1;
@@ -128,7 +130,7 @@ int queue_pop_front_tm(TOID(struct tm_queue) q, int *retval)
     int ret = 0;
     PTM_BEGIN() {
         TOID(struct tm_queue_entry) front = PTM_READ_FIELD(q, front);
-        if (TOID_IS_NULL(front) && TOID_IS_NULL(PTM_READ_FIELD(q, back)))
+        if (TOID_IS_NULL(front))
             goto end_empty;
 
         succ = 1;

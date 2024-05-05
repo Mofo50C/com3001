@@ -1,19 +1,112 @@
 #include <stdlib.h>
 #include <string.h>
-#include "norec_util.h"
+#include "tx_util.h"
 #include "util.h"
+
+#define VEC_INIT 8
+
+int tx_vector_init(struct tx_vec **vecp)
+{
+	struct tx_vec *v = malloc(sizeof(struct tx_vec));
+	if (v == NULL)
+		return 1;
+
+	v->length = 0;
+	v->capacity = VEC_INIT;
+
+	size_t sz = VEC_INIT * sizeof(tx_vec_entry_t);
+	v->arr = malloc(sz);
+	if (v->arr == NULL) {
+		free(v);
+		return 1;
+	}
+
+	memset(v->arr, 0, sz);
+	*vecp = v;
+	return 0;
+}
+
+int tx_vector_resize(struct tx_vec *vec)
+{
+	size_t new_cap = vec->capacity * 2;
+	size_t sz = new_cap * sizeof(tx_vec_entry_t);
+	tx_vec_entry_t *tmp = malloc(sz);
+	if (tmp == NULL)
+		return 1;
+
+	memset(tmp, 0, sz);
+	memcpy(tmp, vec->arr, vec->capacity * sizeof(tx_vec_entry_t));
+	free(vec->arr);
+	vec->arr = tmp;
+	vec->capacity = new_cap;
+
+	return 0;
+}
+
+/* returns 1 on error */
+int tx_vector_append(struct tx_vec *vec, tx_vec_entry_t *entry, size_t *retval)
+{
+	size_t idx = vec->length++;
+	vec->arr[idx] = *entry;
+	
+	if (retval)
+		*retval = idx;
+
+	if (vec->length >= vec->capacity && tx_vector_resize(vec))
+		return 1;
+ 
+	return 0;
+}
+
+
+void tx_vector_destroy(struct tx_vec **vecp)
+{
+	if (*vecp == NULL)
+		return;
+
+	struct tx_vec *vec = *vecp;
+	free(vec->arr);
+	free(vec);
+	*vecp = NULL;
+}
+
+void _vector_free_entries(struct tx_vec *vec)
+{
+	tx_vec_entry_t *entry;
+	int i;
+	for (i = 0; i < vec->length; i++) {
+		entry = &vec->arr[i];
+		if (entry->pval)
+			free(entry->pval);
+		entry->pval = NULL;
+	}
+}
+
+void tx_vector_empty(struct tx_vec *vec)
+{
+	_vector_free_entries(vec);
+	memset(vec->arr, 0, vec->capacity * sizeof(void *));
+	vec->length = 0;
+}
+
+void tx_vector_clear(struct tx_vec *vec)
+{
+	memset(vec->arr, 0, vec->capacity * sizeof(void *));
+	vec->length = 0;
+}
 
 #define MAX_LOAD_FACTOR 0.75
 #define MAX_GROWS 8
 #define INIT_CAP TABLE_PRIMES[0]
 
-static int TABLE_PRIMES[] = {11, 23, 53, 97, 193, 389, 769, 1543, 3079};
+static size_t TABLE_PRIMES[] = {11, 23, 53, 97, 193, 389, 769, 1543, 3079};
 
 uint64_t _hash(uintptr_t key)
 {
 	return fnv64((uint64_t)key);
 }
 
+/* returns 1 on error */
 int tx_hash_new(struct tx_hash **hashp)
 {
 	struct tx_hash *h = malloc(sizeof(struct tx_hash));

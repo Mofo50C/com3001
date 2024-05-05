@@ -1,12 +1,28 @@
-#ifndef NOREC_UTIL_H
-#define NOREC_UTIL_H 1
+#ifndef TX_UTIL_H
+#define TX_UTIL_H 1
 #include <stdlib.h>
 #include <setjmp.h>
 #include <stdint.h>
+#include <libpmemobj.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+struct tx_vec_entry {
+	PMEMoid oid;
+	void *pval;
+	void *addr;
+	size_t size;
+};
+
+typedef struct tx_vec_entry tx_vec_entry_t;
+
+struct tx_vec {
+	size_t length;
+	size_t capacity;
+	tx_vec_entry_t *arr;
+};
 
 struct tx_hash_entry {
 	uint64_t hash;
@@ -22,13 +38,25 @@ struct tx_hash {
 	struct tx_hash_entry *table;
 };
 
+int tx_vector_init(struct tx_vec **vecp);
+
+int tx_vector_resize(struct tx_vec *vec);
+
+int tx_vector_append(struct tx_vec *vec, tx_vec_entry_t *entry, size_t *retval);
+
+void tx_vector_destroy(struct tx_vec **vecp);
+
+void tx_vector_clear(struct tx_vec *vec);
+
+void tx_vector_empty(struct tx_vec *vec);
+
 /* init new tx_hash */
 int tx_hash_new(struct tx_hash **hashp);
 
 /* inserts only new entry */
 int tx_hash_insert(struct tx_hash *h, uintptr_t key, uint64_t value);
 
-/* inserts or updates */
+/* returns 0 if insert, 1 if updating and -1 on error */
 int tx_hash_put(struct tx_hash *h, uintptr_t key, uint64_t value);
 
 /* get entry or NULL if key is not present */

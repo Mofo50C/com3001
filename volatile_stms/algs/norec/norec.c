@@ -8,7 +8,6 @@
 #include "tx.h"
 #include "tx_util.h"
 #include "norec_base.h"
-#include "norec_util.h"
 #include "util.h"
 
 struct tx_meta {

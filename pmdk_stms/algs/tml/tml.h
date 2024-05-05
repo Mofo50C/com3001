@@ -57,7 +57,9 @@ tml_thread_exit()
 	_ret;\
 })
 
-#define TML_FREE TX_FREE
+#define TML_FREE(o)\
+tml_tx_free((o).oid)
+
 #define TML_ALLOC TX_ALLOC
 #define TML_NEW TX_NEW
 #define TML_ZNEW TX_ZNEW

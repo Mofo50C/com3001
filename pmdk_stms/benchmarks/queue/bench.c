@@ -43,12 +43,11 @@ void *worker_enqueue(void *arg)
 	for (i = 0; i < args->n_rounds; i++) {
 		int val = args->idx * args->num_threads * args->n_rounds + i;
 		int split = rand() % 2;
-		// if (split) {
-		// 	TX_enqueue_back(args->queue, val);
-		// } else {
-		// 	TX_enqueue_front(args->queue, val);
-		// }
-		TX_enqueue_back(args->queue, val);
+		if (split) {
+			TX_enqueue_back(args->queue, val);
+		} else {
+			TX_enqueue_front(args->queue, val);
+		}
 	}
 
 	PTM_TH_EXIT();
@@ -65,12 +64,11 @@ void *worker_peak(void *arg)
 	int i;
 	for (i = 0; i < args->n_rounds; i++) {
 		int split = rand() % 2;
-		// if (split) {
-		// 	TX_peak_back(args->queue);
-		// } else {
-		// 	TX_peak_front(args->queue);
-		// }
-		TX_peak_front(args->queue);
+		if (split) {
+			TX_peak_back(args->queue);
+		} else {
+			TX_peak_front(args->queue);
+		}
 	}
 
 	PTM_TH_EXIT();
@@ -87,12 +85,11 @@ void *worker_dequeue(void *arg)
 	int i;
 	for (i = 0; i < args->n_rounds; i++) {		
 		int split = rand() % 2;
-		// if (split) {
-		// 	TX_dequeue_back(args->queue);
-		// } else {
-		// 	TX_dequeue_front(args->queue);
-		// }
-		TX_dequeue_front(args->queue);
+		if (split) {
+			TX_dequeue_back(args->queue);
+		} else {
+			TX_dequeue_front(args->queue);
+		}
 	}
 
 	PTM_TH_EXIT();

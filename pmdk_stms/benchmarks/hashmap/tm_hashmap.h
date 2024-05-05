@@ -17,7 +17,7 @@ TOID_DECLARE(struct tm_hashmap_buckets, TM_HASHMAP_TYPE_NUM + 2);
 struct tm_hashmap_entry {
 	uint64_t key;
 	uint64_t hash;
-	PMEMoid value;
+	int value;
 	TOID(struct tm_hashmap_entry) next;
 };
 
@@ -33,35 +33,31 @@ struct tm_hashmap {
 	TOID(struct tm_hashmap_buckets) buckets;
 };
 
-/* allocate new hashmap */
 int hashmap_new(PMEMobjpool *pop, TOID(struct tm_hashmap) *h);
 
-/* allocate with capacity */
 int hashmap_new_cap(PMEMobjpool *pop, TOID(struct tm_hashmap) *h, size_t capacity);
 
 int hashmap_resize(PMEMobjpool *pop, TOID(struct tm_hashmap) h);
 
 int hashmap_resize_tm(TOID(struct tm_hashmap) h);
 
-/* insert without TM */
-PMEMoid hashmap_put(PMEMobjpool *pop, TOID(struct tm_hashmap) h, uint64_t key, PMEMoid value, int *err);
+/* returns -1 on error, 1 if updated and 0 if inserted new */
+int hashmap_put(PMEMobjpool *pop, TOID(struct tm_hashmap) h, uint64_t key, int value, int *oldval);
 
-/* inserts or updates */
-PMEMoid hashmap_put_tm(TOID(struct tm_hashmap) h, uint64_t key, PMEMoid value, int *err);
+/* returns -1 on error, 1 if updated and 0 if inserted new */
+int hashmap_put_tm(TOID(struct tm_hashmap) h, uint64_t key, int value, int *retval);
 
-/* get value or NULL if key is not present */
-PMEMoid hashmap_get_tm(TOID(struct tm_hashmap) h, uint64_t key, int *err);
+/* returns 1 on error or not found */
+int hashmap_get_tm(TOID(struct tm_hashmap) h, uint64_t key, int *retval);
 
-/* delete key from map */
-PMEMoid hashmap_delete_tm(TOID(struct tm_hashmap) h, uint64_t key, int *err);
+/* returns 1 on error or not found */
+int hashmap_delete_tm(TOID(struct tm_hashmap) h, uint64_t key, int *retval);
 
-/* boolean return if key is present */
+/* returns 1 on error or not found */
 int hashmap_contains_tm(TOID(struct tm_hashmap) h, uint64_t key);
 
 /* foreach function with callback */
-int hashmap_foreach(TOID(struct tm_hashmap) h, int (*cb)(uint64_t key, PMEMoid value, void *arg), void *arg);
-
-int hashmap_foreach_tm(TOID(struct tm_hashmap) h, int (*cb)(uint64_t key, PMEMoid value, void *arg), void *arg);
+int hashmap_foreach(TOID(struct tm_hashmap) h, int (*cb)(uint64_t key, int value, void *arg), void *arg);
 
 /* entirely destroys hashmap and frees memory */
 int hashmap_destroy(PMEMobjpool *pop, TOID(struct tm_hashmap) *h);

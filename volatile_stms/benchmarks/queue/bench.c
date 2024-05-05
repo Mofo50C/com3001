@@ -34,16 +34,34 @@ void *worker_enqueue(void *arg)
 	STM_TH_ENTER();
 
 	int i;
-	for (i = 0; i < args->n_rounds; i++)
-	{
-		
+	for (i = 0; i < args->n_rounds; i++) {
 		int val = args->idx * args->num_threads * args->n_rounds + i;
 		int split = rand() % 2;
-
 		if (split) {
-			tm_enqueue_back(args->queue, val);
+			TX_enqueue_back(args->queue, val);
 		} else {
-			tm_enqueue_front(args->queue, val);
+			TX_enqueue_front(args->queue, val);
+		}
+	}
+
+	STM_TH_EXIT();
+
+	return NULL;
+}
+
+void *worker_peak(void *arg)
+{
+	struct worker_args *args = (struct worker_args *)arg;
+	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
+	STM_TH_ENTER();
+
+	int i;
+	for (i = 0; i < args->n_rounds; i++) {
+		int split = rand() % 2;
+		if (split) {
+			TX_peak_back(args->queue);
+		} else {
+			TX_peak_front(args->queue);
 		}
 	}
 
@@ -59,14 +77,12 @@ void *worker_dequeue(void *arg)
 	STM_TH_ENTER();
 
 	int i;
-	for (i = 0; i < args->n_rounds; i++)
-	{		
+	for (i = 0; i < args->n_rounds; i++) {		
 		int split = rand() % 2;
-
 		if (split) {
-			tm_dequeue_back(args->queue);
+			TX_dequeue_back(args->queue);
 		} else {
-			tm_dequeue_front(args->queue);
+			TX_dequeue_front(args->queue);
 		}
 	}
 
@@ -78,7 +94,7 @@ void *worker_dequeue(void *arg)
 int main(int argc, char const *argv[])
 {
 	if (argc < 3) {
-		printf("usage: %s <num_threads> <num_rounds> [inserts] [deletes]\n", argv[0]);
+		printf("usage: %s <num_threads> <num_rounds> [inserts] [reads] [deletes]\n", argv[0]);
 		return 1;
 	}
 	
@@ -99,17 +115,22 @@ int main(int argc, char const *argv[])
 	int put_ratio = 100;
 	if (argc >= 4)
 		put_ratio = atoi(argv[3]);
+
+	int get_ratio = 0;
+	if (argc >= 5)
+		get_ratio = atoi(argv[4]);
 	
 	int del_ratio = 0;
-	if (argc == 5)
-		del_ratio = atoi(argv[4]);
+	if (argc == 6)
+		del_ratio = atoi(argv[5]);
 
-	if (put_ratio + del_ratio != 100) { 
+	if (put_ratio + get_ratio + del_ratio != 100) { 
 		printf("ratios must add to 100\n");
 		return 1;
 	}
 
 	put_ratio *= CONST_MULT;
+	get_ratio *= CONST_MULT;
 	del_ratio *= CONST_MULT;
 
 	STM_STARTUP();
@@ -140,7 +161,9 @@ int main(int argc, char const *argv[])
 		int r = rand() % (100 * CONST_MULT);
 		if (r < put_ratio) {
 			pthread_create(&workers[i], NULL, worker_enqueue, args);
-		} else if (r >= put_ratio && r < del_ratio + put_ratio) {
+		} else if (r >= put_ratio && r < get_ratio + put_ratio) {
+			pthread_create(&workers[i], NULL, worker_peak, args);
+		} else if (r < put_ratio + get_ratio + del_ratio) {
 			pthread_create(&workers[i], NULL, worker_dequeue, args);
 		}
 	}

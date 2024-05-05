@@ -11,7 +11,7 @@ extern "C" {
 struct tm_hashmap_entry {
 	uint64_t key;
 	uint64_t hash;
-	void *value;
+	int value;
 	struct tm_hashmap_entry *next;
 };
 
@@ -27,33 +27,31 @@ struct tm_hashmap {
 	struct tm_hashmap_buckets *buckets;
 };
 
-/* allocate new hashmap */
 int hashmap_new(struct tm_hashmap **h);
 
 int hashmap_new_cap(struct tm_hashmap **h, size_t capacity);
-
-/* inserts or updates */
-void *hashmap_put_tm(struct tm_hashmap *h, uint64_t key, void *value, int *err);
-
-void *hashmap_put(struct tm_hashmap *h, uint64_t key, void *value, int *err);
 
 int hashmap_resize_tm(struct tm_hashmap *h);
 
 int hashmap_resize(struct tm_hashmap *h);
 
-/* get value or NULL if key is not present */
-void *hashmap_get_tm(struct tm_hashmap *h, uint64_t key, int *err);
+/* returns -1 on error, 1 if updated and 0 if inserted new */
+int hashmap_put_tm(struct tm_hashmap *h, uint64_t key, int value, int *retval);
 
-/* delete key from map */
-void *hashmap_delete_tm(struct tm_hashmap *h, uint64_t key, int *err);
+/* returns -1 on error, 1 if updated and 0 if inserted new */
+int hashmap_put(struct tm_hashmap *h, uint64_t key, int value, int *retval);
 
-/* boolean return if key is present */
+/* returns 1 on error or not found */
+int hashmap_get_tm(struct tm_hashmap *h, uint64_t key, int *retval);
+
+/* returns 1 on error or not found */
+int hashmap_delete_tm(struct tm_hashmap *h, uint64_t key, int *retval);
+
+/* returns 1 on error or not found */
 int hashmap_contains_tm(struct tm_hashmap *h, uint64_t key);
 
 /* foreach function with callback */
-int hashmap_foreach(struct tm_hashmap *h, int (*cb)(uint64_t key, void *value, void *arg), void *arg);
-
-int hashmap_foreach_tm(struct tm_hashmap *h, int (*cb)(uint64_t key, void *value, void *arg), void *arg);
+int hashmap_foreach(struct tm_hashmap *h, int (*cb)(uint64_t key, int value, void *arg), void *arg);
 
 /* entirely destroys hashmap and frees memory */
 void hashmap_destroy(struct tm_hashmap **h);

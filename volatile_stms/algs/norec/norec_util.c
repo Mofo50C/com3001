@@ -220,6 +220,9 @@ void tx_hash_empty(struct tx_hash *h)
 
 void tx_hash_destroy(struct tx_hash **hashp)
 {
+	if (*hashp == NULL)
+		return;
+
 	struct tx_hash *h = *hashp;
 	free(h->table);
 	free(h);

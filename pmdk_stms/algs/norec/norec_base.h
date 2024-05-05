@@ -1,6 +1,8 @@
 #ifndef NOREC_BASE_H
 #define NOREC_BASE_H 1
 
+#include <stdbool.h>
+#include <stdlib.h>
 #include <libpmemobj.h>
 
 #ifdef __cplusplus
@@ -33,7 +35,7 @@ pid_t norec_get_tid(void);
 
 void norec_rdset_add(void *pdirect, void *src, size_t size);
 
-int norec_wrset_get(void *pdirect, void *buf, size_t size);
+bool norec_wrset_get(void *pdirect, void *buf, size_t size);
 
 void norec_validate(void);
 

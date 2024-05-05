@@ -38,7 +38,7 @@ int tx_vector_init(struct tx_vec **vecp);
 
 int tx_vector_resize(struct tx_vec *vec);
 
-int tx_vector_append(struct tx_vec *vec, struct tx_vec_entry *entry);
+int tx_vector_append(struct tx_vec *vec, struct tx_vec_entry *entry, size_t *retval);
 
 void tx_vector_destroy(struct tx_vec **vecp);
 

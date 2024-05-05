@@ -23,24 +23,23 @@ int queue_new(PMEMobjpool *pop, TOID(struct tm_queue) *q)
 	return ret;
 }
 
-void queue_entry_init(TOID(struct tm_queue_entry) e, PMEMoid value)
+void queue_entry_init(TOID(struct tm_queue_entry) e, int value)
 {
     D_RW(e)->value = value;
     D_RW(e)->next = TOID_NULL(struct tm_queue_entry);
     D_RW(e)->prev = TOID_NULL(struct tm_queue_entry);
 }
 
-TOID(struct tm_queue_entry) queue_entry_new_tm(PMEMoid value)
+TOID(struct tm_queue_entry) queue_entry_new_tm(int value)
 {
     TOID(struct tm_queue_entry) e = PTM_ZNEW(struct tm_queue_entry);
     queue_entry_init(e, value);
     return e;
 }
 
-int queue_push_back_tm(TOID(struct tm_queue) q, PMEMoid value)
+int queue_push_back_tm(TOID(struct tm_queue) q, int value)
 {
     int ret = 0;
-
     PTM_BEGIN() {
         TOID(struct tm_queue_entry) new_tail = queue_entry_new_tm(value);
         TOID(struct tm_queue_entry) back = PTM_READ_FIELD(q, back);
@@ -62,7 +61,7 @@ int queue_push_back_tm(TOID(struct tm_queue) q, PMEMoid value)
     return ret;
 }
 
-int queue_push_front_tm(TOID(struct tm_queue) q, PMEMoid value)
+int queue_push_front_tm(TOID(struct tm_queue) q, int value)
 {
     int ret = 0;
 
@@ -87,17 +86,18 @@ int queue_push_front_tm(TOID(struct tm_queue) q, PMEMoid value)
     return ret;
 }
 
-PMEMoid queue_pop_back_tm(TOID(struct tm_queue) q, int *err)
+int queue_pop_back_tm(TOID(struct tm_queue) q, int *retval)
 {
-    PMEMoid retval = OID_NULL;
+    int succ = 0;
     int ret = 0;
-
     PTM_BEGIN() {
         TOID(struct tm_queue_entry) back = PTM_READ_FIELD(q, back);
         if (TOID_IS_NULL(PTM_READ_FIELD(q, front)) && TOID_IS_NULL(back))
             goto end_empty;
 
-        retval = PTM_READ_FIELD(back, value);
+        succ = 1;
+        if (retval)
+            *retval = PTM_READ_FIELD(back, value);
         TOID(struct tm_queue_entry) prev = PTM_READ_FIELD(back, prev);
         if (TOID_IS_NULL(prev)) {
             PTM_WRITE_FIELD(q, front, TOID_NULL(struct tm_queue_entry));
@@ -108,33 +108,32 @@ PMEMoid queue_pop_back_tm(TOID(struct tm_queue) q, int *err)
         }
         PTM_WRITE_FIELD(back, prev, TOID_NULL(struct tm_queue_entry));
         PTM_FREE(back);
-        PTM_WRITE_FIELD(q, length, (PTM_READ_FIELD(q, length) - 1));
+        size_t len = PTM_READ_FIELD(q, length) - 1;
+        PTM_WRITE_FIELD(q, length, len);
 end_empty:  ;
     } PTM_ONABORT {
         DEBUGABORT();
         ret = 1;
     } PTM_END
 
-    if (err)
-        *err = ret;
+    if (ret || !succ)
+        return 1;
     
-    if (ret)
-        return OID_NULL;
-
-    return retval;
+    return 0;
 }
 
-PMEMoid queue_pop_front_tm(TOID(struct tm_queue) q, int *err)
+int queue_pop_front_tm(TOID(struct tm_queue) q, int *retval)
 {
-    PMEMoid retval = OID_NULL;
+    int succ = 0;
     int ret = 0;
-
     PTM_BEGIN() {
         TOID(struct tm_queue_entry) front = PTM_READ_FIELD(q, front);
         if (TOID_IS_NULL(front) && TOID_IS_NULL(PTM_READ_FIELD(q, back)))
             goto end_empty;
 
-        retval = PTM_READ_FIELD(front, value);
+        succ = 1;
+        if (retval)
+            *retval = PTM_READ_FIELD(front, value);
         TOID(struct tm_queue_entry) next = PTM_READ_FIELD(front, next);
         if (TOID_IS_NULL(next)) {
             PTM_WRITE_FIELD(q, front, TOID_NULL(struct tm_queue_entry));
@@ -145,69 +144,65 @@ PMEMoid queue_pop_front_tm(TOID(struct tm_queue) q, int *err)
         }
         PTM_WRITE_FIELD(front, next, TOID_NULL(struct tm_queue_entry));
         PTM_FREE(front);
-        PTM_WRITE_FIELD(q, length, (PTM_READ_FIELD(q, length) - 1));
+        size_t len = PTM_READ_FIELD(q, length) - 1;
+        PTM_WRITE_FIELD(q, length, len);
 end_empty:  ;
     } PTM_ONABORT {
         DEBUGABORT();
         ret = 1;
     } PTM_END
 
-    if (err)
-        *err = ret;
-    
-    if (ret)
-        return OID_NULL;
+    if (ret || !succ)
+        return 1;
 
-    return retval;
+    return 0;
 }
 
-PMEMoid queue_peak_back_tm(TOID(struct tm_queue) q, int *err)
+int queue_peak_back_tm(TOID(struct tm_queue) q, int *retval)
 {
-    PMEMoid retval = OID_NULL;
+    int succ = 0;
     int ret = 0;
-
     PTM_BEGIN() {
         TOID(struct tm_queue_entry) back = PTM_READ_FIELD(q, back);
-        if (!TOID_IS_NULL(back))
-            retval = PTM_READ_FIELD(back, value);
+        if (!TOID_IS_NULL(back)) {
+            succ = 1;
+            if (retval)
+                *retval = PTM_READ_FIELD(back, value);
+        }
     } PTM_ONABORT {
         DEBUGABORT();
         ret = 1;
     } PTM_END
 
-    if (err)
-        *err = ret;
-    
-    if (ret)
-        return OID_NULL;
+    if (ret || !succ)
+        return 1;
 
-    return retval;
+    return 0;
 }
 
-PMEMoid queue_peak_front_tm(TOID(struct tm_queue) q, int *err)
+int queue_peak_front_tm(TOID(struct tm_queue) q, int *retval)
 {
-    PMEMoid retval = OID_NULL;
+    int succ = 0;
     int ret = 0;
-
     PTM_BEGIN() {
         TOID(struct tm_queue_entry) front = PTM_READ_FIELD(q, front);
-        if (!TOID_IS_NULL(front))
-            retval = PTM_READ_FIELD(front, value);
+        if (!TOID_IS_NULL(front)) {
+            succ = 1;
+            if (retval)
+                *retval = PTM_READ_FIELD(front, value);
+        }
     } PTM_ONABORT {
         DEBUGABORT();
         ret = 1;
     } PTM_END
 
-    if (err)
-        *err = ret;
-    
-    if (ret)
-        return OID_NULL;
+    if (ret || !succ)
+        return 1;
 
-    return retval;
+    return 0;
 }
 
-int queue_foreach(TOID(struct tm_queue) q, int (*cb)(size_t idx, PMEMoid value, void *arg), void *arg)
+int queue_foreach(TOID(struct tm_queue) q, int (*cb)(size_t idx, int value, void *arg), void *arg)
 {
     int ret = 0;
 
@@ -224,7 +219,7 @@ int queue_foreach(TOID(struct tm_queue) q, int (*cb)(size_t idx, PMEMoid value, 
     return ret;
 }
 
-int queue_foreach_reverse(TOID(struct tm_queue) q, int (*cb)(size_t idx, PMEMoid value, void *arg), void *arg)
+int queue_foreach_reverse(TOID(struct tm_queue) q, int (*cb)(size_t idx, int value, void *arg), void *arg)
 {
     int ret = 0;
 
@@ -248,8 +243,6 @@ int _queue_destroy_entries(PMEMobjpool *pop, TOID(struct tm_queue) q)
     TX_BEGIN(pop) {
         TOID(struct tm_queue_entry) head;
         while (!TOID_IS_NULL((head = D_RO(q)->front))) {
-            PMEMoid value = D_RW(head)->value;
-            pmemobj_tx_free(value);
             D_RW(q)->front = D_RO(head)->next;
             TX_FREE(head);
         }

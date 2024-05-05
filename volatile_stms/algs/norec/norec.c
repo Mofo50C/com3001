@@ -63,13 +63,8 @@ err_abort:
 void norec_thread_exit(void) {
 	struct tx_meta *tx = get_tx_meta();
 	tx_thread_exit();
-
-	tx_vector_empty(tx->write_set);
 	tx_vector_destroy(&tx->write_set);
-
-	tx_vector_empty(tx->read_set);
 	tx_vector_destroy(&tx->read_set);
-
 	tx_hash_destroy(&tx->wrset_lookup);
 }
 
@@ -91,8 +86,8 @@ void norec_rdset_add(void *pdirect, void *buf, size_t size)
 {
 	struct tx_meta *tx = get_tx_meta();
 	ASSERT_IN_WORK(tx_get_stage())
-	int err = 0;
 
+	int err = 0;
 	void *pval = malloc(size);
 	if (pval == NULL) {
 		err = errno;
@@ -107,15 +102,14 @@ void norec_rdset_add(void *pdirect, void *buf, size_t size)
 		.size = size
 	};
 
-	if (tx_vector_append(tx->read_set, &e) < 0) {
+	if (tx_vector_append(tx->read_set, &e, NULL)) {
 		err = errno;
-		goto err_clean;
+		free(pval);
+		goto err_abort;
 	}
 
 	return;
 
-err_clean:
-	free(pval);
 err_abort:
 	DEBUGLOG("tx_read failed");
 	tx_abort(err);
@@ -152,9 +146,8 @@ void norec_tx_write(void *pdirect_field, size_t size, void *buf)
 	memcpy(pval, buf, size);
 
 	uintptr_t field_key = (uintptr_t)pdirect_field;
-
-	struct tx_hash_entry *entry;
-	if ((entry = tx_hash_get(tx->wrset_lookup, field_key))) {
+	struct tx_hash_entry *entry = tx_hash_get(tx->wrset_lookup, field_key);
+	if (entry != NULL) {
 		struct tx_vec_entry *v = &tx->write_set->arr[entry->index];
 		free(v->pval);
 		v->pval = pval;
@@ -165,22 +158,23 @@ void norec_tx_write(void *pdirect_field, size_t size, void *buf)
 			.size = size,
 			.addr = pdirect_field
 		};
-		size_t idx = tx_vector_append(tx->write_set, &e);
-		if (idx < 0) {
+
+		size_t prev_idx;
+		if (tx_vector_append(tx->write_set, &e, &prev_idx)) {
 			err = errno;
-			goto err_clean;
+			free(pval);
+			goto err_abort;
 		}
 
-		if (tx_hash_put(tx->wrset_lookup, field_key, idx) < 0) {
+		if (tx_hash_put(tx->wrset_lookup, field_key, prev_idx) == -1) {
 			err = errno;
-			goto err_clean;
+			free(pval);
+			goto err_abort;
 		}
 	}
 
 	return;
 
-err_clean:
-	free(pval);
 err_abort:
 	DEBUGLOG("tx_write failed");
 	tx_abort(err);

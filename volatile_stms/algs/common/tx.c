@@ -120,13 +120,8 @@ void tx_thread_exit(void)
 {
 	struct tx *tx = get_tx();
 	tx_add_metrics();
-
-	tx_vector_clear(tx->free_list);
 	tx_vector_destroy(&tx->free_list);
-
-	tx_vector_clear(tx->alloc_list);
 	tx_vector_destroy(&tx->alloc_list);
-
 	tx_stack_destroy(&tx->entries);
 }
 
@@ -206,15 +201,14 @@ void *tx_malloc(size_t size, int zero)
 	struct tx_vec_entry e = {
 		.addr = addr
 	};
-	if (tx_vector_append(tx->alloc_list, &e) < 0) {
+	if (tx_vector_append(tx->alloc_list, &e, NULL)) {
 		err = errno;
-		goto err_clean;
+		free(addr);
+		goto err_abort;
 	}
 	
 	return addr;
 
-err_clean:
-	free(addr);
 err_abort:
 	DEBUGLOG("tx_malloc failed");
 	tx_abort(err);
@@ -230,8 +224,10 @@ int tx_free(void *ptr)
 	for (i = 0; i < tx->free_list->length; i++)
 	{
 		struct tx_vec_entry *e = &tx->free_list->arr[i];
-		if (e->addr == ptr)
-			return 0;
+		if (e->addr == ptr) {
+			e->addr = NULL;
+			break;
+		}
 	}
 
 	struct tx_vec_entry e = {
@@ -240,7 +236,7 @@ int tx_free(void *ptr)
 		.size = 0
 	};
 
-	if (tx_vector_append(tx->free_list, &e) < 0) {
+	if (tx_vector_append(tx->free_list, &e, NULL)) {
 		DEBUGLOG("tx_free failed");
 		tx_abort(errno);
         return 1;
@@ -281,10 +277,11 @@ int tx_end(void (*end_cb)(void))
 	free(txd);
 
 	int ret = tx->last_errnum;
-	if (tx_stack_isempty(tx->entries)) {
+	if (tx_stack_isempty(tx->entries) && tx->level == 0) {
 		tx->stage = TX_STAGE_NONE;
 		tx_vector_clear(tx->alloc_list);
 		tx_vector_clear(tx->free_list);
+		tx_stack_destroy(&tx->entries);
 
 		end_cb();
 	} else {
@@ -318,6 +315,8 @@ void tx_reclaim_frees(void)
 		entry = &tx->free_list->arr[i];
 
 		DEBUGPRINT("[%d] freeing...", tx->tid);
-		free(entry->addr);
+		// printf("[%d] freeing...\n",tx->tid);
+		if (entry->addr != NULL)
+			free(entry->addr);
 	}
 }

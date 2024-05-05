@@ -29,6 +29,7 @@ static PMEMobjpool *pop;
 struct transfer_args {
 	int idx;
 	int price;
+	int msec;
 };
 
 void *process_simple(void *arg)
@@ -44,7 +45,7 @@ void *process_simple(void *arg)
 	PTM_BEGIN() {
 		int balance1 = PTM_READ(accsp->balance1);
 		int balance2 = PTM_READ(accsp->balance2);
-		msleep(500);
+		msleep(args->msec);
 		PTM_WRITE(accsp->balance1, (balance1 + price));
 		PTM_WRITE(accsp->balance2, (balance2 - price));
 	} PTM_ONABORT {
@@ -58,8 +59,8 @@ void *process_simple(void *arg)
 
 int main(int argc, char const *argv[])
 {
-	if (argc != 6) {
-		printf("usage: %s <pool_file> <num_threads> <balance1> <balance2> <price>\n", argv[0]);
+	if (argc < 6) {
+		printf("usage: %s <pool_file> <num_threads> <balance1> <balance2> <price> [sleep]\n", argv[0]);
 		return 1;
 	}
 
@@ -67,6 +68,9 @@ int main(int argc, char const *argv[])
 	int balance1 = atoi(argv[3]);
 	int balance2 = atoi(argv[4]);
 	int price = atoi(argv[5]);
+	int msec = 0;
+	if (argc == 7)
+		msec = atoi(argv[6]);
 
 	if (num_threads < 1) {
 		printf("<num_threads> must be at least 1\n");
@@ -125,6 +129,7 @@ int main(int argc, char const *argv[])
 		struct transfer_args *args = &arg_data[i];
 		args->idx = i;
 		args->price = price;
+		args->msec = msec;
 		pthread_create(&workers[i], NULL, process_simple, args);
 	}
 

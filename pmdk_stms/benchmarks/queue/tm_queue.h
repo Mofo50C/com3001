@@ -13,7 +13,7 @@ TOID_DECLARE(struct tm_queue, TM_QUEUE_TYPE_NUM);
 TOID_DECLARE(struct tm_queue_entry, TM_QUEUE_TYPE_NUM + 1);
 
 struct tm_queue_entry {
-	PMEMoid value;
+	int value;
 	TOID(struct tm_queue_entry) next;
 	TOID(struct tm_queue_entry) prev;
 };
@@ -27,22 +27,28 @@ struct tm_queue {
 /* allocate new queue */
 int queue_new(PMEMobjpool *pop, TOID(struct tm_queue) *q);
 
-int queue_push_back_tm(TOID(struct tm_queue) q, PMEMoid value);
+/* returns 0 if successful, otherwise 1 */
+int queue_push_back_tm(TOID(struct tm_queue) q, int value);
 
-int queue_push_front_tm(TOID(struct tm_queue) q, PMEMoid value);
+/* returns 0 if successful, otherwise 1 */
+int queue_push_front_tm(TOID(struct tm_queue) q, int value);
 
-PMEMoid queue_pop_back_tm(TOID(struct tm_queue) q, int *err);
+/* returns 0 if successful, otherwise 1 */
+int queue_pop_back_tm(TOID(struct tm_queue) q, int *retval);
 
-PMEMoid queue_pop_front_tm(TOID(struct tm_queue) q, int *err);
+/* returns 0 if successful, otherwise 1 */
+int queue_pop_front_tm(TOID(struct tm_queue) q, int *retval);
 
-PMEMoid queue_peak_back_tm(TOID(struct tm_queue) q, int *err);
+/* returns 0 if successful, otherwise 1 */
+int queue_peak_back_tm(TOID(struct tm_queue) q, int *retval);
 
-PMEMoid queue_peak_front_tm(TOID(struct tm_queue) q, int *err);
+/* returns 0 if successful, otherwise 1 */
+int queue_peak_front_tm(TOID(struct tm_queue) q, int *retval);
 
 /* foreach function with callback */
-int queue_foreach(TOID(struct tm_queue) q, int (*cb)(size_t idx, PMEMoid value, void *arg), void *arg);
+int queue_foreach(TOID(struct tm_queue) q, int (*cb)(size_t idx, int value, void *arg), void *arg);
 
-int queue_foreach_reverse(TOID(struct tm_queue) q, int (*cb)(size_t idx, PMEMoid value, void *arg), void *arg);
+int queue_foreach_reverse(TOID(struct tm_queue) q, int (*cb)(size_t idx, int value, void *arg), void *arg);
 
 /* entirely destroys queue and frees memory */
 int queue_destroy(PMEMobjpool *pop, TOID(struct tm_queue) *q);

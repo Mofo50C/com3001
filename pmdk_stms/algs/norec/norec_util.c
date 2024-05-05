@@ -43,21 +43,27 @@ int tx_vector_resize(struct tx_vec *vec)
 	return 0;
 }
 
-/* returns -1 on error */
-int tx_vector_append(struct tx_vec *vec, struct tx_vec_entry *entry)
+/* returns 1 on error */
+int tx_vector_append(struct tx_vec *vec, struct tx_vec_entry *entry, size_t *retval)
 {
-	if (vec->length >= vec->capacity) {
-		if (tx_vector_resize(vec)) 
-			return -1;
-	}
-
-	int idx = vec->length++;
+	size_t idx = vec->length++;
 	vec->arr[idx] = *entry;
-	return idx;
+	
+	if (retval)
+		*retval = idx;
+
+	if (vec->length >= vec->capacity && tx_vector_resize(vec))
+		return 1;
+ 
+	return 0;
 }
+
 
 void tx_vector_destroy(struct tx_vec **vecp)
 {
+	if (*vecp == NULL)
+		return;
+
 	struct tx_vec *vec = *vecp;
 	free(vec->arr);
 	free(vec);
@@ -70,7 +76,8 @@ void _vector_free_entries(struct tx_vec *vec)
 	int i;
 	for (i = 0; i < vec->length; i++) {
 		entry = &vec->arr[i];
-		free(entry->pval);
+		if (entry->pval)
+			free(entry->pval);
 		entry->pval = NULL;
 	}
 }
@@ -78,6 +85,12 @@ void _vector_free_entries(struct tx_vec *vec)
 void tx_vector_empty(struct tx_vec *vec)
 {
 	_vector_free_entries(vec);
+	memset(vec->arr, 0, vec->capacity * sizeof(void *));
+	vec->length = 0;
+}
+
+void tx_vector_clear(struct tx_vec *vec)
+{
 	memset(vec->arr, 0, vec->capacity * sizeof(void *));
 	vec->length = 0;
 }
@@ -300,6 +313,9 @@ void tx_hash_empty(struct tx_hash *h)
 
 void tx_hash_destroy(struct tx_hash **hashp)
 {
+	if (*hashp == NULL)
+		return;
+
 	struct tx_hash *h = *hashp;
 	free(h->table);
 	free(h);

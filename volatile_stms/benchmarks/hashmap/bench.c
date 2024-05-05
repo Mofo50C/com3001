@@ -31,15 +31,15 @@ struct worker_args {
 void *worker_insert(void *arg)
 {
 	struct worker_args *args = (struct worker_args *)arg;
-	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
+	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
 	STM_TH_ENTER();
 
 	int i;
-	for (i = 0; i < args->n_rounds; i++)
-	{
+	for (i = 0; i < args->n_rounds; i++) {
 		int val = args->idx * args->num_threads * args->n_rounds + i;
+		// int val = rand() % 1000;
 		int key = rand() % args->num_keys;
-		tm_map_insert(args->map, key, val);
+		TX_map_insert(args->map, key, val);
 	}
 
 	STM_TH_EXIT();
@@ -50,14 +50,13 @@ void *worker_insert(void *arg)
 void *worker_delete(void *arg)
 {
 	struct worker_args *args = (struct worker_args *)arg;
-	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
+	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
 	STM_TH_ENTER();
 
 	int i;
-	for (i = 0; i < args->n_rounds; i++)
-	{
+	for (i = 0; i < args->n_rounds; i++) {
 		int key = rand() % args->num_keys;
-		tm_map_delete(args->map, key);
+		TX_map_delete(args->map, key);
 	}
 
 	STM_TH_EXIT();
@@ -68,14 +67,13 @@ void *worker_delete(void *arg)
 void *worker_get(void *arg)
 {
 	struct worker_args *args = (struct worker_args *)arg;
-	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
+	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
 	STM_TH_ENTER();
 
 	int i;
-	for (i = 0; i < args->n_rounds; i++)
-	{
+	for (i = 0; i < args->n_rounds; i++) {
 		int key = rand() % args->num_keys;
-		tm_map_read(args->map, key);
+		TX_map_read(args->map, key);
 	}
 
 	STM_TH_EXIT();
@@ -122,7 +120,7 @@ int main(int argc, char const *argv[])
 	del_ratio *= CONST_MULT;
 	
 	STM_STARTUP();
-	if (hashmap_new(&root.map)) {
+	if (hashmap_new_cap(&root.map, num_keys)) {
 		printf("error in new...\n");
 		return 1;
 	}

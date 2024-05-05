@@ -30,36 +30,22 @@ void *worker_new(void *arg)
 	DEBUGPRINT("<P%d> with pid %d\n\tTransfer %d from %d to %d\n", args.idx, gettid(), args.val, args.key1, args.key2);
 	STM_TH_ENTER();
 
-	void *val1, *val2;
 	STM_BEGIN() {
-		val1 = hashmap_get_tm(args.map, args.key1, NULL);
-		if (val1 == NULL)
+		int val1;
+		if (hashmap_get_tm(args.map, args.key1, &val1))
 			STM_ABORT();
 
-		val2 = hashmap_get_tm(args.map, args.key2, NULL);
-		if (val2 == NULL)
+		int val2;
+		if (hashmap_get_tm(args.map, args.key2, &val2))
 			STM_ABORT();
 
-		int *new1 = STM_NEW(int);
-		*new1 = STM_READ_DIRECT((int *)val1, sizeof(int)) - args.val;
-		int *new2 = STM_NEW(int);
-		*new2 = STM_READ_DIRECT((int *)val2, sizeof(int)) + args.val;
+		val1 -= args.val;
+		val2 += args.val;
 
-		int err = 0;
-		hashmap_put_tm(args.map, args.key1, (void *)new1, &err);
-		if (err)
-			STM_ABORT();
-
-		err = 0;
-		hashmap_put_tm(args.map, args.key2, (void *)new2, &err);
-		if (err)
-			STM_ABORT();
-
-	} STM_ONCOMMIT {
-		free(val1);
-		free(val2);
+		hashmap_put_tm(args.map, args.key1, val1, NULL);
+		hashmap_put_tm(args.map, args.key2, val2, NULL);
 	} STM_ONABORT {
-		DEBUGABORT();
+		DEBUGPRINT("[%d] key not found", gettid());
 	} STM_END
 
 	STM_TH_EXIT();

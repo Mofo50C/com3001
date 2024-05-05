@@ -5,28 +5,19 @@
 #include "util.h"
 #include "map.h"
 
-int *hash_val_new(int val)
-{
-	int *myval = malloc(sizeof(int));
-	if (myval == NULL)
-		return NULL;
+#define RAII
+#include "stm.h"
 
-	*myval = val;
-	return myval;
-}
-
-int reduce_val(uint64_t key, void *value, void *arg)
+int reduce_val(uint64_t key, int value, void *arg)
 {
 	int *total = (int *)arg;
-	*total = *total + *(int *)value;
+	*total += value;
 	return 0;
 }
 
-int print_val(uint64_t key, void *value, void *arg)
+int print_val(uint64_t key, int value, void *arg)
 {
-	int val = *(int *)value; 
-	printf("\t%ju => %d\n", key, val);
-
+	printf("\t%ju => %d\n", key, value);
 	return 0;
 }
 
@@ -38,65 +29,57 @@ void print_map(tm_hashmap_t *h)
 }
 
 void map_insert(tm_hashmap_t *h, uint64_t key, int val)
-{	
-	int *new_val = hash_val_new(val);
-	if (new_val == NULL) {
-		printf("failed to allocate new hash_val\n");
-		return;
-	}
-
-	int err = 0;
-	void *oldval = hashmap_put(h, key, (void *)new_val, &err);
-	if (err) {
-		free(new_val);
-		return;
-	}
-
-	if (oldval)
-		free(oldval);
-}
-
-void tm_map_insert(tm_hashmap_t *h, uint64_t key, int val)
-{	
-	int *new_val = hash_val_new(val);
-	if (new_val == NULL) {
-		printf("failed to allocate new hash_val\n");
-		return;
-	}
-
-	int err = 0;
-	void *oldval = hashmap_put_tm(h, key, (void *)new_val, &err);
-	pid_t pid = gettid();
-	if (err) {
-		DEBUGPRINT("[%d] error putting %ju => %d\n", pid, key, val);
-		free(new_val);
-	} else if (oldval) {
-		DEBUGPRINT("[%d] update %ju => %d\n", pid, key, val);
-		free(oldval);
-	} else {
-		DEBUGPRINT("[%d] insert %ju => %d\n", pid, key, val);
-	}
-}
-
-void tm_map_read(tm_hashmap_t *h, uint64_t key)
 {
-	void *ret = hashmap_get_tm(h, key, NULL);
-	if (ret)
-		DEBUGPRINT("[%d] get %ju: %d\n", gettid(), key, *(int *)ret);
+	int oldval;
+	switch (hashmap_put_tm(h, key, val, &oldval)) {
+		case 0:
+			DEBUGPRINT("insert %ju => %d", key, val);
+			break;
+		case 1:
+			DEBUGPRINT("update %ju => %d | old: %d", key, val, oldval);
+			break;
+		case -1:
+			DEBUGPRINT("error putting %ju => %d", key, val);
+			break;
+	}
 }
 
-void tm_map_delete(tm_hashmap_t *h, uint64_t key)
-{
-	int err = 0;
-	void *oldval = hashmap_delete_tm(h, key, &err);
-
+void TX_map_insert(tm_hashmap_t *h, uint64_t key, int val)
+{	
+	int oldval;
 	pid_t pid = gettid();
-	if (err) {
-		DEBUGPRINT("[%d] failed to delete key %ju\n", pid, key);
-	} else if (oldval) {
-		DEBUGPRINT("[%d] deleted key %ju with val %d\n", pid, key, *(int *)oldval);
-		free(oldval);
-	} else {
-		DEBUGPRINT("[%d] %ju not in map\n", pid, key);
+	switch (hashmap_put_tm(h, key, val, &oldval)) {
+		case 0:
+			DEBUGPRINT("[%d] insert %ju => %d", pid, key, val);
+			break;
+		case 1:
+			DEBUGPRINT("[%d] update %ju => %d | old: %d", pid, key, val, oldval);
+			break;
+		case -1:
+			DEBUGPRINT("[%d] error putting %ju => %d", pid, key, val);
+			break;
 	}
+}
+
+void TX_map_read(tm_hashmap_t *h, uint64_t key)
+{
+	int retval;
+	pid_t pid = gettid();
+	if (hashmap_get_tm(h, key, &retval)) {
+		DEBUGPRINT("[%d] get: %ju not found", pid, key);
+	} else {
+		DEBUGPRINT("[%d] get %ju: %d", pid, key, retval);
+	}
+}
+
+void TX_map_delete(tm_hashmap_t *h, uint64_t key)
+{
+	int oldval;
+	pid_t pid = gettid();
+	if (hashmap_delete_tm(h, key, &oldval)) {
+		DEBUGPRINT("[%d] delete: %ju not found", pid, key);
+	} else {
+		DEBUGPRINT("[%d] deleted %ju => %d", pid, key, oldval);
+	}
+
 }

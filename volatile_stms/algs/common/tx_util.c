@@ -8,9 +8,6 @@
 
 int tx_stack_init(struct tx_stack **sp)
 {
-	if (*sp != NULL)
-		return 0;
-
 	struct tx_stack *e = malloc(sizeof(struct tx_stack));
 	if (e == NULL)
 		return 1;
@@ -60,16 +57,15 @@ void tx_stack_empty(struct tx_stack *s)
 	s->first = NULL;
 }
 
-int tx_stack_destroy(struct tx_stack **sp)
+void tx_stack_destroy(struct tx_stack **sp)
 {
 	if (*sp == NULL)
-		return 0;
+		return;
 
-	tx_stack_empty(*sp);
 	free(*sp);
 	*sp = NULL;
 
-	return 0;
+	return;
 }
 
 int tx_stack_isempty(struct tx_stack *s)
@@ -115,22 +111,27 @@ int tx_vector_resize(struct tx_vec *vec)
 	return 0;
 }
 
-/* returns -1 on error */
-int tx_vector_append(struct tx_vec *vec, struct tx_vec_entry *entry)
+/* returns 1 on error */
+int tx_vector_append(struct tx_vec *vec, struct tx_vec_entry *entry, size_t *retval)
 {
-	if (vec->length >= vec->capacity) {
-		if (tx_vector_resize(vec)) 
-			return -1;
-	}
-
-	int idx = vec->length++;
+	size_t idx = vec->length++;
 	vec->arr[idx] = *entry;
-	return idx;
+	
+	if (retval)
+		*retval = idx;
+
+	if (vec->length >= vec->capacity && tx_vector_resize(vec))
+		return 1;
+ 
+	return 0;
 }
 
 
 void tx_vector_destroy(struct tx_vec **vecp)
 {
+	if (*vecp == NULL)
+		return;
+
 	struct tx_vec *vec = *vecp;
 	free(vec->arr);
 	free(vec);
@@ -143,7 +144,8 @@ void _vector_free_entries(struct tx_vec *vec)
 	int i;
 	for (i = 0; i < vec->length; i++) {
 		entry = &vec->arr[i];
-		free(entry->pval);
+		if (entry->pval)
+			free(entry->pval);
 		entry->pval = NULL;
 	}
 }

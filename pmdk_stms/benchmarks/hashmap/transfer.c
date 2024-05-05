@@ -35,43 +35,25 @@ void *worker_new(void *arg)
 {
 	struct worker_args args = *(struct worker_args *)arg;
 	DEBUGPRINT("<P%d> with pid %d\n\tTransfer %d from %d to %d\n", args.idx, gettid(), args.val, args.key1, args.key2);
+	
 	PTM_TH_ENTER(pop);
 
-	PMEMoid val1, val2;
 	PTM_BEGIN() {
-		val1 = hashmap_get_tm(args.map, args.key1, NULL);
-		if (OID_IS_NULL(val1))
+		int val1;
+		if (hashmap_get_tm(args.map, args.key1, &val1))
 			PTM_ABORT();
 
-		val2 = hashmap_get_tm(args.map, args.key2, NULL);
-		if (OID_IS_NULL(val2))
+		int val2;
+		if (hashmap_get_tm(args.map, args.key2, &val2))
 			PTM_ABORT();
 
-		struct hash_val *valp1 = pmemobj_direct(val1);
-		struct hash_val *valp2 = pmemobj_direct(val2);
+		val1 -= args.val;
+		val2 += args.val;
 
-		hash_val_t new1 = PTM_ZNEW(struct hash_val);
-		D_RW(new1)->val = PTM_READ_DIRECT(&valp1->val, sizeof(int)) - args.val;
-		hash_val_t new2 = PTM_ZNEW(struct hash_val);
-		D_RW(new2)->val = PTM_READ_DIRECT(&valp2->val, sizeof(int)) + args.val;
-
-		msleep(args.sleep);
-
-		int err = 0;
-		hashmap_put_tm(args.map, args.key1, new1.oid, &err);
-		if (err)
-			PTM_ABORT();
-
-		err = 0;
-		hashmap_put_tm(args.map, args.key2, new2.oid, &err);
-		if (err)
-			PTM_ABORT();
-
-	} PTM_ONCOMMIT {
-		pmemobj_free(&val1);
-		pmemobj_free(&val2);
+		hashmap_put_tm(args.map, args.key1, val1, NULL);
+		hashmap_put_tm(args.map, args.key2, val2, NULL);
 	} PTM_ONABORT {
-		DEBUGABORT();
+		DEBUGPRINT("[%d] key not found", gettid());
 	} PTM_END
 
 	PTM_TH_EXIT();

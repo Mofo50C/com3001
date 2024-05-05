@@ -11,7 +11,7 @@
 #define MAX_LOAD_FACTOR 1
 #define MAX_GROWS 27
 
-#define HASHMAP_RESIZABLE
+// #define HASHMAP_RESIZABLE
 
 #define INIT_CAP TABLE_PRIMES[0]
 
@@ -65,7 +65,7 @@ int hashmap_new(PMEMobjpool *pop, TOID(struct tm_hashmap) *h)
 	return hashmap_new_cap(pop, h, INIT_CAP);
 }
 
-void hashmap_entry_init(TOID(struct tm_hashmap_entry) e, uint64_t key, uint64_t hash, PMEMoid value)
+void hashmap_entry_init(TOID(struct tm_hashmap_entry) e, uint64_t key, uint64_t hash, int value)
 {
 	D_RW(e)->hash = hash;
 	D_RW(e)->key = key;
@@ -73,18 +73,315 @@ void hashmap_entry_init(TOID(struct tm_hashmap_entry) e, uint64_t key, uint64_t 
 	D_RW(e)->next = TOID_NULL(struct tm_hashmap_entry);
 }
 
-TOID(struct tm_hashmap_entry) hashmap_entry_new_tm(uint64_t key, uint64_t hash, PMEMoid value)
+TOID(struct tm_hashmap_entry) hashmap_entry_new_tm(uint64_t key, uint64_t hash, int value)
 {
 	TOID(struct tm_hashmap_entry) new_entry = PTM_ZNEW(struct tm_hashmap_entry);
 	hashmap_entry_init(new_entry, key, hash, value);
 	return new_entry;
 }
 
-TOID(struct tm_hashmap_entry) hashmap_entry_new(uint64_t key, uint64_t hash, PMEMoid value)
+TOID(struct tm_hashmap_entry) hashmap_entry_new(uint64_t key, uint64_t hash, int value)
 {
 	TOID(struct tm_hashmap_entry) new_entry = TX_ZNEW(struct tm_hashmap_entry);
 	hashmap_entry_init(new_entry, key, hash, value);
 	return new_entry;
+}
+
+/* returns old value old OID_NULL */
+int hashmap_put_tm(TOID(struct tm_hashmap) h, uint64_t key, int value, int *retval)
+{
+	uint64_t key_hash = GET_HASH(&key);
+
+	int found = 0;
+	int ret = 0;
+	PTM_BEGIN() {
+		int b = key_hash % PTM_READ_FIELD(h, capacity);
+		TOID(struct tm_hashmap_buckets) buckets = PTM_READ_FIELD(h, buckets);
+		TOID(struct tm_hashmap_entry) entry = PTM_READ_FIELD(buckets, arr[b]);
+		if (TOID_IS_NULL(entry)) {
+			TOID(struct tm_hashmap_entry) new_entry = hashmap_entry_new_tm(key, key_hash, value);
+			PTM_WRITE_FIELD(buckets, arr[b], new_entry);
+			size_t len = PTM_READ_FIELD(h, length) + 1;
+			PTM_WRITE_FIELD(h, length, len);
+		} else {
+			if (PTM_READ_FIELD(entry, key) == key) {
+				found = 1;
+				if (retval)
+					*retval = PTM_READ_FIELD(entry, value);
+				PTM_WRITE_FIELD(entry, value, value);
+				goto end;
+			}
+
+			TOID(struct tm_hashmap_entry) prev = entry;
+			TOID(struct tm_hashmap_entry) curr = PTM_READ_FIELD(entry, next);
+			while (!TOID_IS_NULL(curr)) {
+				if (PTM_READ_FIELD(curr, key) == key) {
+					found = 1;
+					if (retval)
+						*retval = PTM_READ_FIELD(curr, value);
+					PTM_WRITE_FIELD(curr, value, value);
+					goto end;
+				}
+				prev = curr;
+				curr = PTM_READ_FIELD(prev, next);
+			}
+
+			TOID(struct tm_hashmap_entry) new_entry = hashmap_entry_new_tm(key, key_hash, value);
+			PTM_WRITE_FIELD(prev, next, new_entry);
+			size_t len = PTM_READ_FIELD(h, length) + 1;
+			PTM_WRITE_FIELD(h, length, len);
+		}
+end:	;
+	} PTM_ONABORT {
+		DEBUGABORT();
+		ret = 1;
+	} PTM_END
+
+	if (ret)
+		return -1;
+
+	return found;
+}
+
+int hashmap_put(PMEMobjpool *pop, TOID(struct tm_hashmap) h, uint64_t key, int value, int *oldval)
+{
+	uint64_t key_hash = GET_HASH(&key);
+
+	int found = 0;
+	int ret = 0;
+	int b = key_hash % D_RW(h)->capacity;
+	TOID(struct tm_hashmap_buckets) buckets = D_RW(h)->buckets;
+	TOID(struct tm_hashmap_entry) entry = D_RW(buckets)->arr[b];
+
+	TX_BEGIN(pop) {
+		if (TOID_IS_NULL(entry)) {
+			TOID(struct tm_hashmap_entry) new_entry = hashmap_entry_new(key, key_hash, value);
+			TX_ADD_FIELD(buckets, arr[b]);
+			D_RW(buckets)->arr[b] = new_entry;
+			TX_ADD_FIELD(h, length);
+			D_RW(h)->length++;
+		} else {
+			TOID(struct tm_hashmap_entry) prev;
+			do {
+				prev = entry;
+				if (D_RW(entry)->key == key) {
+					if (oldval)
+						*oldval = D_RW(entry)->value;
+					TX_ADD_FIELD(entry, value);
+					D_RW(entry)->value = value;
+					found = 1;
+					break;
+				}
+			} while (!TOID_IS_NULL((entry = D_RW(entry)->next)));
+
+			if (!found) {
+				TOID(struct tm_hashmap_entry) new_entry = hashmap_entry_new(key, key_hash, value);
+				TX_ADD_FIELD(prev, next);
+				D_RW(prev)->next = new_entry;
+				TX_ADD_FIELD(h, length);
+				D_RW(h)->length++;
+			}
+		}
+	} TX_ONABORT {
+		DEBUGABORT();
+		ret = 1;
+	} TX_END
+
+	if (ret)
+		return -1;
+
+#if defined(HASHMAP_RESIZABLE)
+	hashmap_resize(pop, h);
+#endif
+	return found;
+}
+
+int hashmap_get_tm(TOID(struct tm_hashmap) h, uint64_t key, int *retval)
+{
+	uint64_t key_hash = GET_HASH(&key);
+
+	int found = 0;
+	int ret = 0;
+	PTM_BEGIN() {
+		int bucket = key_hash % PTM_READ_FIELD(h, capacity);
+		TOID(struct tm_hashmap_buckets) buckets = PTM_READ_FIELD(h, buckets);
+
+		TOID(struct tm_hashmap_entry) entry;
+		for (entry = PTM_READ_FIELD(buckets, arr[bucket]);
+			!TOID_IS_NULL(entry);
+			entry = PTM_READ_FIELD(entry, next)) 
+		{
+			if (PTM_READ_FIELD(entry, key) == key) {
+				found = 1;
+				if (retval)
+					*retval = PTM_READ_FIELD(entry, value);
+				break;
+			}
+		}
+	} PTM_ONABORT {
+		DEBUGABORT();
+		ret = 1;
+	} PTM_END
+	
+	if (ret || !found)
+		return 1;
+
+	return 0;
+}
+
+int hashmap_delete_tm(TOID(struct tm_hashmap) h, uint64_t key, int *retval)
+{
+	uint64_t key_hash = GET_HASH(&key);
+
+	int found = 0;
+	int ret = 0;
+	PTM_BEGIN() {
+		int b = key_hash % PTM_READ_FIELD(h, capacity);
+		TOID(struct tm_hashmap_buckets) buckets = PTM_READ_FIELD(h, buckets);
+		TOID(struct tm_hashmap_entry) head = PTM_READ_FIELD(buckets, arr[b]);
+		if (TOID_IS_NULL(head))
+			goto end;
+
+		if (PTM_READ_FIELD(head, key) == key) {
+			found = 1;
+			if (retval)
+				*retval = PTM_READ_FIELD(head, value);
+			TOID(struct tm_hashmap_entry) next = PTM_READ_FIELD(head, next);
+			PTM_WRITE_FIELD(buckets, arr[b], next);
+			PTM_FREE(head);
+			size_t len = PTM_READ_FIELD(h, length) - 1;
+			PTM_WRITE_FIELD(h, length, len);
+			goto end;
+		}
+
+		TOID(struct tm_hashmap_entry) prev = head;
+		TOID(struct tm_hashmap_entry) curr = PTM_READ_FIELD(prev, next);
+
+		while(!TOID_IS_NULL(curr)) {
+			if (PTM_READ_FIELD(curr, key) == key) {
+				found = 1;
+				if (retval)
+					*retval = PTM_READ_FIELD(curr, value);
+				TOID(struct tm_hashmap_entry) next = PTM_READ_FIELD(curr, next);
+				PTM_WRITE_FIELD(prev, next, next);
+				PTM_FREE(curr);
+				size_t len = PTM_READ_FIELD(h, length) - 1;
+				PTM_WRITE_FIELD(h, length, len);
+				goto end;
+			}
+			prev = curr;
+			curr = PTM_READ_FIELD(curr, next);
+		}
+end:	;
+	} PTM_ONABORT {
+		DEBUGABORT();
+		ret = 1;
+	} PTM_END
+
+	if (ret || !found)
+		return 1;
+
+	return 0;
+}
+
+int hashmap_contains_tm(TOID(struct tm_hashmap) h, uint64_t key)
+{
+	uint64_t key_hash = GET_HASH(&key);
+
+	int found = 0;
+	int ret = 0;
+	PTM_BEGIN() {
+		int bucket = key_hash % PTM_READ_FIELD(h, capacity);
+		TOID(struct tm_hashmap_buckets) buckets = PTM_READ_FIELD(h, buckets);
+
+		TOID(struct tm_hashmap_entry) entry;
+		for (entry = PTM_READ_FIELD(buckets, arr[bucket]); 
+			!TOID_IS_NULL(entry);
+			entry = PTM_READ_FIELD(entry, next)) 
+		{
+			if (PTM_READ_FIELD(entry, key) == key) {
+				found = 1;
+				break;
+			}
+		}
+	} PTM_ONABORT {
+		DEBUGABORT();
+		ret = 1;
+	} PTM_END
+
+	if (ret || !found)
+		return 1;
+
+	return 0;
+}
+
+int hashmap_foreach(TOID(struct tm_hashmap) h, int (*cb)(uint64_t key, int value, void *arg), void *arg)
+{
+	TOID(struct tm_hashmap_buckets) buckets = D_RO(h)->buckets;
+	TOID(struct tm_hashmap_entry) var;
+
+	for (size_t i = 0; i < D_RO(buckets)->num_buckets; i++)  {
+		for (var = D_RW(buckets)->arr[i]; 
+			!TOID_IS_NULL(var); 
+			var = D_RO(var)->next) 
+		{
+			int ret = cb(D_RO(var)->key, D_RO(var)->value, arg);
+			if (ret)
+				return ret;
+		}
+	}
+	
+	return 0;
+}
+
+int _hashmap_destroy_entries(PMEMobjpool *pop, TOID(struct tm_hashmap) h)
+{
+	int ret = 0;
+	TX_BEGIN(pop) {		
+		if (D_RO(h)->length > 0) {
+			TOID(struct tm_hashmap_buckets) buckets = D_RO(h)->buckets;
+			int i;
+			TOID(struct tm_hashmap_entry) head;
+			for (i = 0; i < D_RO(h)->capacity; i++) {
+				head = D_RO(buckets)->arr[i];
+				if (TOID_IS_NULL(head)) continue;
+
+				TOID(struct tm_hashmap_entry) e;
+				while (!TOID_IS_NULL((e = D_RO(head)->next))) {
+					D_RW(buckets)->arr[i] = e;
+					TX_FREE(head);
+					head = e;
+				}
+				TX_FREE(head);
+				D_RW(buckets)->arr[i] = TOID_NULL(struct tm_hashmap_entry);
+			}
+		}
+	} TX_ONABORT {
+		DEBUGABORT();
+		ret = 1;
+	} TX_END
+
+	return ret;
+}
+
+int hashmap_destroy(PMEMobjpool *pop, TOID(struct tm_hashmap) *h)
+{
+	TOID(struct tm_hashmap) map = *h;
+	int ret = _hashmap_destroy_entries(pop, map);
+
+	if (ret) return ret;
+
+	TX_BEGIN(pop) {
+		TX_FREE(D_RO(map)->buckets);
+		D_RW(map)->buckets = TOID_NULL(struct tm_hashmap_buckets);
+		TX_FREE(map);
+		*h = TOID_NULL(struct tm_hashmap);
+	} TX_ONABORT {
+		DEBUGABORT();
+		ret = 1;
+	} TX_END
+
+	return ret;
 }
 
 int hashmap_resize_tm(TOID(struct tm_hashmap) h)
@@ -182,331 +479,3 @@ int hashmap_resize(PMEMobjpool *pop, TOID(struct tm_hashmap) h)
 
 	return ret;
 }
-
-
-/* returns old value old OID_NULL */
-PMEMoid hashmap_put_tm(TOID(struct tm_hashmap) h, uint64_t key, PMEMoid value, int *err)
-{
-	uint64_t key_hash = GET_HASH(&key);
-
-	PMEMoid oldval = OID_NULL;
-	int found = 0;
-	int ret = 0;
-	PTM_BEGIN() {
-		int b = key_hash % PTM_READ(D_RW(h)->capacity);
-		TOID(struct tm_hashmap_buckets) buckets = PTM_READ(D_RW(h)->buckets);
-		TOID(struct tm_hashmap_entry) entry = PTM_READ(D_RW(buckets)->arr[b]);
-		if (TOID_IS_NULL(entry)) {
-			TOID(struct tm_hashmap_entry) new_entry = hashmap_entry_new_tm(key, key_hash, value);
-			PTM_WRITE(D_RW(buckets)->arr[b], new_entry);
-			PTM_WRITE(D_RW(h)->length, (PTM_READ(D_RW(h)->length) + 1));
-		} else {
-			TOID(struct tm_hashmap_entry) prev;
-			do {
-				prev = entry;
-				if (PTM_READ(D_RW(entry)->key) == key) {
-					oldval = PTM_READ(D_RW(entry)->value);
-					PTM_WRITE(D_RW(entry)->value, value);
-					found = 1;
-					break;
-				}
-			} while (!TOID_IS_NULL((entry = PTM_READ(D_RW(entry)->next))));
-
-			if (!found) {
-				TOID(struct tm_hashmap_entry) new_entry = hashmap_entry_new_tm(key, key_hash, value);
-				PTM_WRITE(D_RW(prev)->next, new_entry);
-				PTM_WRITE(D_RW(h)->length, (PTM_READ(D_RW(h)->length) + 1));
-			}
-		}
-	} PTM_ONABORT {
-		DEBUGABORT();
-		ret = 1;
-	} PTM_END
-	
-	if (err)
-		*err = ret;
-
-	if (ret)
-		return OID_NULL;
-
-#if defined(HASHMAP_RESIZABLE)
-	hashmap_resize_tm(h);
-#endif
-	return oldval;
-}
-
-PMEMoid hashmap_put(PMEMobjpool *pop, TOID(struct tm_hashmap) h, uint64_t key, PMEMoid value, int *err)
-{
-	uint64_t key_hash = GET_HASH(&key);
-
-	PMEMoid oldval = OID_NULL;
-	int found = 0;
-	int ret = 0;
-
-	int b = key_hash % D_RW(h)->capacity;
-	TOID(struct tm_hashmap_buckets) buckets = D_RW(h)->buckets;
-	TOID(struct tm_hashmap_entry) entry = D_RW(buckets)->arr[b];
-
-	TX_BEGIN(pop) {
-		if (TOID_IS_NULL(entry)) {
-			TOID(struct tm_hashmap_entry) new_entry = hashmap_entry_new(key, key_hash, value);
-			TX_ADD_FIELD(buckets, arr[b]);
-			D_RW(buckets)->arr[b] = new_entry;
-			TX_ADD_FIELD(h, length);
-			D_RW(h)->length++;
-		} else {
-			TOID(struct tm_hashmap_entry) prev;
-			do {
-				prev = entry;
-				if (D_RW(entry)->key == key) {
-					oldval = D_RW(entry)->value;
-					TX_ADD_FIELD(entry, value);
-					D_RW(entry)->value = value;
-					found = 1;
-					break;
-				}
-			} while (!TOID_IS_NULL((entry = D_RW(entry)->next)));
-
-			if (!found) {
-				TOID(struct tm_hashmap_entry) new_entry = hashmap_entry_new(key, key_hash, value);
-				TX_ADD_FIELD(prev, next);
-				D_RW(prev)->next = new_entry;
-				TX_ADD_FIELD(h, length);
-				D_RW(h)->length++;
-			}
-		}
-	} TX_ONABORT {
-		DEBUGABORT();
-		ret = 1;
-	} TX_END
-
-	if (err)
-		*err = ret;
-
-	if (ret)
-		return OID_NULL;
-
-#if defined(HASHMAP_RESIZABLE)
-	hashmap_resize(pop, h);
-#endif
-	return oldval;
-}
-
-PMEMoid hashmap_get_tm(TOID(struct tm_hashmap) h, uint64_t key, int *err)
-{
-	uint64_t key_hash = GET_HASH(&key);
-	PMEMoid retval = OID_NULL;
-
-	int ret = 0;
-	PTM_BEGIN() {
-		int bucket = key_hash % PTM_READ(D_RW(h)->capacity);
-		TOID(struct tm_hashmap_buckets) buckets = PTM_READ(D_RW(h)->buckets);
-
-		TOID(struct tm_hashmap_entry) entry;
-		for (entry = PTM_READ(D_RW(buckets)->arr[bucket]); 
-			!TOID_IS_NULL(entry);
-			entry = PTM_READ(D_RW(entry)->next)) 
-		{
-			if (PTM_READ(D_RW(entry)->key) == key) {
-				retval = PTM_READ(D_RW(entry)->value);
-				break;
-			}
-		}
-	} PTM_ONABORT {
-		DEBUGABORT();
-		ret = 1;
-	} PTM_END
-	
-	if (err)
-		*err = ret;
-
-	if (ret) return OID_NULL;
-
-	return retval;
-}
-
-PMEMoid hashmap_delete_tm(TOID(struct tm_hashmap) h, uint64_t key, int *err)
-{
-	uint64_t key_hash = GET_HASH(&key);
-
-	int ret = 0;
-	int found = 0;
-	PMEMoid oldval = OID_NULL;
-	PTM_BEGIN() {
-		int b = key_hash % PTM_READ(D_RW(h)->capacity);
-		TOID(struct tm_hashmap_buckets) buckets = PTM_READ(D_RW(h)->buckets);
-		TOID(struct tm_hashmap_entry) head = PTM_READ(D_RW(buckets)->arr[b]);
-		if (TOID_IS_NULL(head))
-			goto end;
-
-		if (PTM_READ(D_RW(head)->key) == key) {
-			found = 1;
-			oldval = PTM_READ(D_RW(head)->value);
-			PTM_WRITE(D_RW(buckets)->arr[b], PTM_READ(D_RW(head)->next));
-			PTM_FREE(head);
-			goto end;
-		}
-
-		TOID(struct tm_hashmap_entry) prev = head;
-		for (head = PTM_READ(D_RW(head)->next);
-			!TOID_IS_NULL(head);
-			prev = head, head = PTM_READ(D_RW(head)->next))
-		{
-			if (PTM_READ(D_RW(head)->key) == key) {
-				found = 1;
-				break;
-			}
-		}
-
-		if (found) {
-			oldval = PTM_READ(D_RW(head)->value);
-			PTM_WRITE(D_RW(prev)->next, PTM_READ(D_RW(head)->next));
-			PTM_FREE(head);
-		}
-end: 	;
-	} PTM_ONABORT {
-		DEBUGABORT();
-		ret = 1;
-	} PTM_END
-
-	if (ret)
-		goto pTM_err;
-
-	if (found)
-		return oldval;
-
-pTM_err:
-	if (err)
-		*err = ret;
-
-	return OID_NULL;
-}
-
-int hashmap_contains_tm(TOID(struct tm_hashmap) h, uint64_t key)
-{
-	uint64_t key_hash = GET_HASH(&key);
-
-	int ret = 0;
-	PTM_BEGIN() {
-		int bucket = key_hash % PTM_READ(D_RW(h)->capacity);
-		TOID(struct tm_hashmap_buckets) buckets = PTM_READ(D_RW(h)->buckets);
-
-		TOID(struct tm_hashmap_entry) entry;
-		for (entry = PTM_READ(D_RW(buckets)->arr[bucket]); 
-			!TOID_IS_NULL(entry);
-			entry = PTM_READ(D_RW(entry)->next)) 
-		{
-			if (PTM_READ(D_RW(entry)->key) == key) {
-				ret = 1;
-				break;
-			}
-		}
-	} PTM_ONABORT {
-		DEBUGABORT();
-		ret = -1;
-	} PTM_END
-	
-	return ret;
-}
-
-int hashmap_foreach(TOID(struct tm_hashmap) h, int (*cb)(uint64_t key, PMEMoid value, void *arg), void *arg)
-{
-	TOID(struct tm_hashmap_buckets) buckets = D_RO(h)->buckets;
-	TOID(struct tm_hashmap_entry) var;
-
-	for (size_t i = 0; i < D_RO(buckets)->num_buckets; i++)  {
-		for (var = D_RW(buckets)->arr[i]; 
-			!TOID_IS_NULL(var); 
-			var = D_RO(var)->next) 
-		{
-			if (cb(D_RO(var)->key, D_RO(var)->value, arg))
-				return 1;
-		}
-
-	}
-	
-	return 0;
-}
-
-int hashmap_foreach_tm(TOID(struct tm_hashmap) h, int (*cb)(uint64_t key, PMEMoid value, void *arg), void *arg)
-{
-	int err = 0;
-	int ret = 0;
-	PTM_BEGIN() {
-		TOID(struct tm_hashmap_buckets) buckets = PTM_READ(D_RW(h)->buckets);
-		TOID(struct tm_hashmap_entry) var;
-
-		for (size_t i = 0; i < PTM_READ(D_RW(buckets)->num_buckets); i++)  {
-			for (var = PTM_READ(D_RW(buckets)->arr[i]); 
-				!TOID_IS_NULL(var); 
-				var = PTM_READ(D_RW(var)->next)) 
-			{
-				ret = cb(PTM_READ(D_RW(var)->key), PTM_READ(D_RW(var)->value), arg);
-				if (ret)
-					goto outer;
-			}
-
-		}
-outer:	;
-	} PTM_ONABORT {
-		DEBUGABORT();
-		err = 1;
-	} PTM_END
-
-	if (err)
-		return -1;
-	
-	return ret;
-}
-
-int _hashmap_destroy_entries(PMEMobjpool *pop, TOID(struct tm_hashmap) h)
-{
-	int ret = 0;
-	TX_BEGIN(pop) {		
-		if (D_RO(h)->length > 0) {
-			TOID(struct tm_hashmap_buckets) buckets = D_RO(h)->buckets;
-			int i;
-			TOID(struct tm_hashmap_entry) head;
-			for (i = 0; i < D_RO(h)->capacity; i++) {
-				head = D_RO(buckets)->arr[i];
-				if (TOID_IS_NULL(head)) continue;
-
-				TOID(struct tm_hashmap_entry) e;
-				while (!TOID_IS_NULL((e = D_RO(head)->next))) {
-					D_RW(buckets)->arr[i] = e;
-					pmemobj_tx_free(D_RO(head)->value);
-					TX_FREE(head);
-					head = e;
-				}
-				TX_FREE(head);
-				D_RW(buckets)->arr[i] = TOID_NULL(struct tm_hashmap_entry);
-			}
-		}
-	} TX_ONABORT {
-		DEBUGABORT();
-		ret = 1;
-	} TX_END
-
-	return ret;
-}
-
-int hashmap_destroy(PMEMobjpool *pop, TOID(struct tm_hashmap) *h)
-{
-	TOID(struct tm_hashmap) map = *h;
-	int ret = _hashmap_destroy_entries(pop, map);
-
-	if (ret) return ret;
-
-	TX_BEGIN(pop) {
-		TX_FREE(D_RO(map)->buckets);
-		D_RW(map)->buckets = TOID_NULL(struct tm_hashmap_buckets);
-		TX_FREE(map);
-		*h = TOID_NULL(struct tm_hashmap);
-	} TX_ONABORT {
-		DEBUGABORT();
-		ret = 1;
-	} TX_END
-
-	return ret;
-}
-

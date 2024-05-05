@@ -19,24 +19,23 @@ int queue_new(struct tm_queue **q)
 	return 0;
 }
 
-void queue_entry_init(struct tm_queue_entry *e, void *value)
+void queue_entry_init(struct tm_queue_entry *e, int value)
 {
     e->value = value;
     e->next = NULL;
     e->prev = NULL;
 }
 
-struct tm_queue_entry *queue_entry_new_tm(void *value)
+struct tm_queue_entry *queue_entry_new_tm(int value)
 {
     struct tm_queue_entry *e = STM_ZNEW(struct tm_queue_entry);
     queue_entry_init(e, value);
     return e;
 }
 
-int queue_push_back_tm(struct tm_queue *q, void *value)
+int queue_push_back_tm(struct tm_queue *q, int value)
 {
     int ret = 0;
-
     STM_BEGIN() {
         struct tm_queue_entry *new_tail = queue_entry_new_tm(value);
         struct tm_queue_entry *back = STM_READ_FIELD(q, back);
@@ -58,7 +57,7 @@ int queue_push_back_tm(struct tm_queue *q, void *value)
     return ret;
 }
 
-int queue_push_front_tm(struct tm_queue *q, void *value)
+int queue_push_front_tm(struct tm_queue *q, int value)
 {
     int ret = 0;
 
@@ -83,17 +82,18 @@ int queue_push_front_tm(struct tm_queue *q, void *value)
     return ret;
 }
 
-void *queue_pop_back_tm(struct tm_queue *q, int *err)
+int queue_pop_back_tm(struct tm_queue *q, int *retval)
 {
-    void *retval = NULL;
+    int succ = 0;
     int ret = 0;
-
     STM_BEGIN() {
         struct tm_queue_entry *back = STM_READ_FIELD(q, back);
         if (STM_READ_FIELD(q, front) == NULL && back == NULL)
             goto end_empty;
 
-        retval = STM_READ_FIELD(back, value);
+        succ = 1;
+        if (retval)
+            *retval = STM_READ_FIELD(back, value);
         struct tm_queue_entry *prev = STM_READ_FIELD(back, prev);
         if (prev == NULL) {
             STM_WRITE_FIELD(q, front, NULL);
@@ -104,33 +104,32 @@ void *queue_pop_back_tm(struct tm_queue *q, int *err)
         }
         STM_WRITE_FIELD(back, prev, NULL);
         STM_FREE(back);
-        STM_WRITE_FIELD(q, length, (STM_READ_FIELD(q, length) - 1));
+        size_t len = STM_READ_FIELD(q, length) - 1;
+        STM_WRITE_FIELD(q, length, len);
 end_empty:  ;
     } STM_ONABORT {
         DEBUGABORT();
         ret = 1;
     } STM_END
 
-    if (err)
-        *err = ret;
+    if (ret || !succ)
+        return 1;
     
-    if (ret)
-        return NULL;
-
-    return retval;
+    return 0;
 }
 
-void *queue_pop_front_tm(struct tm_queue *q, int *err)
+int queue_pop_front_tm(struct tm_queue *q, int *retval)
 {
-    void *retval = NULL;
+    int succ = 0;
     int ret = 0;
-
     STM_BEGIN() {
         struct tm_queue_entry *front = STM_READ_FIELD(q, front);
         if (front == NULL && STM_READ_FIELD(q, back) == NULL)
             goto end_empty;
 
-        retval = STM_READ_FIELD(front, value);
+        succ = 1;
+        if (retval)
+            *retval = STM_READ_FIELD(front, value);
         struct tm_queue_entry *next = STM_READ_FIELD(front, next);
         if (next == NULL) {
             STM_WRITE_FIELD(q, front, NULL);
@@ -141,69 +140,65 @@ void *queue_pop_front_tm(struct tm_queue *q, int *err)
         }
         STM_WRITE_FIELD(front, next, NULL);
         STM_FREE(front);
-        STM_WRITE_FIELD(q, length, (STM_READ_FIELD(q, length) - 1));
+        size_t len = STM_READ_FIELD(q, length) - 1;
+        STM_WRITE_FIELD(q, length, len);
 end_empty:  ;
     } STM_ONABORT {
         DEBUGABORT();
         ret = 1;
     } STM_END
 
-    if (err)
-        *err = ret;
-    
-    if (ret)
-        return NULL;
+    if (ret || !succ)
+        return 1;
 
-    return retval;
+    return 0;
 }
 
-void *queue_peak_back_tm(struct tm_queue *q, int *err)
+int queue_peak_back_tm(struct tm_queue *q, int *retval)
 {
-    void *retval = NULL;
+    int succ = 0;
     int ret = 0;
-
     STM_BEGIN() {
         struct tm_queue_entry *back = STM_READ_FIELD(q, back);
-        if (!back)
-            retval = STM_READ_FIELD(back, value);
+        if (back != NULL) {
+            succ = 1;
+            if (retval)
+                *retval = STM_READ_FIELD(back, value);
+        }
     } STM_ONABORT {
         DEBUGABORT();
         ret = 1;
     } STM_END
 
-    if (err)
-        *err = ret;
-    
-    if (ret)
-        return NULL;
+    if (ret || !succ)
+        return 1;
 
-    return retval;
+    return 0;
 }
 
-void *queue_peak_front_tm(struct tm_queue *q, int *err)
+int queue_peak_front_tm(struct tm_queue *q, int *retval)
 {
-    void *retval = NULL;
+    int succ = 0;
     int ret = 0;
-
     STM_BEGIN() {
         struct tm_queue_entry *front = STM_READ_FIELD(q, front);
-        if (!front)
-            retval = STM_READ_FIELD(front, value);
+        if (front != NULL) {
+            succ = 1;
+            if (retval)
+                *retval = STM_READ_FIELD(front, value);
+        }
     } STM_ONABORT {
         DEBUGABORT();
         ret = 1;
     } STM_END
 
-    if (err)
-        *err = ret;
-    
-    if (ret)
-        return NULL;
+    if (ret || !succ)
+        return 1;
 
-    return retval;
+    return 0;
 }
 
-int queue_foreach(struct tm_queue *q, int (*cb)(size_t idx, void *value, void *arg), void *arg)
+int queue_foreach(struct tm_queue *q, int (*cb)(size_t idx, int value, void *arg), void *arg)
 {
     int ret = 0;
 
@@ -220,7 +215,7 @@ int queue_foreach(struct tm_queue *q, int (*cb)(size_t idx, void *value, void *a
     return ret;
 }
 
-int queue_foreach_reverse(struct tm_queue *q, int (*cb)(size_t idx, void *value, void *arg), void *arg)
+int queue_foreach_reverse(struct tm_queue *q, int (*cb)(size_t idx, int value, void *arg), void *arg)
 {
     int ret = 0;
 
@@ -241,8 +236,6 @@ int _queue_destroy_entries(struct tm_queue *q)
 {
     struct tm_queue_entry *head;
     while ((head = q->front) != NULL) {
-        void *value = head->value;
-        free(value);
         q->front = head->next;
         free(head);
     }

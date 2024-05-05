@@ -56,7 +56,7 @@ struct tx_data *tx_stack_pop(struct tx_stack *s);
 
 void tx_stack_empty(struct tx_stack *s);
 
-int tx_stack_destroy(struct tx_stack **sp);
+void tx_stack_destroy(struct tx_stack **sp);
 
 int tx_vector_init(struct tx_vec **vecp);
 
@@ -64,7 +64,7 @@ int tx_stack_isempty(struct tx_stack *s);
 
 int tx_vector_resize(struct tx_vec *vec);
 
-int tx_vector_append(struct tx_vec *vec, struct tx_vec_entry *entry);
+int tx_vector_append(struct tx_vec *vec, struct tx_vec_entry *entry, size_t *retval);
 
 void tx_vector_destroy(struct tx_vec **vecp);
 

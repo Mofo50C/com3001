@@ -14,7 +14,7 @@
 
 #define NANOSEC 1000000000.0
 #define CONST_MULT 100
-#define POOL_SIZE PMEMOBJ_MIN_POOL * 40
+#define POOL_SIZE PMEMOBJ_MIN_POOL * 50
 
 POBJ_LAYOUT_BEGIN(hashmap_bench);
 POBJ_LAYOUT_ROOT(hashmap_bench, struct root);
@@ -37,17 +37,16 @@ struct worker_args {
 void *worker_insert(void *arg)
 {
 	struct worker_args *args = (struct worker_args *)arg;
-	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
+	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
 	PTM_TH_ENTER(pop);
 
 	int i;
-	for (i = 0; i < args->n_rounds; i++)
-	{
+	for (i = 0; i < args->n_rounds; i++) {
 		int val = args->idx * args->num_threads * args->n_rounds + i;
+		// int val = rand() % 1000;
 		int key = rand() % args->num_keys;
-		tm_map_insert(args->map, key, val);
+		TX_map_insert(args->map, key, val);
 	}
-
 
 	PTM_TH_EXIT();
 
@@ -57,15 +56,15 @@ void *worker_insert(void *arg)
 void *worker_delete(void *arg)
 {
 	struct worker_args *args = (struct worker_args *)arg;
-	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
+	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
 	PTM_TH_ENTER(pop);
 
 	int i;
-	for (i = 0; i < args->n_rounds; i++)
-	{
+	for (i = 0; i < args->n_rounds; i++) {
 		int key = rand() % args->num_keys;
-		tm_map_delete(args->map, key);
+		TX_map_delete(args->map, key);
 	}
+
 	PTM_TH_EXIT();
 
 	return NULL;
@@ -74,14 +73,13 @@ void *worker_delete(void *arg)
 void *worker_get(void *arg)
 {
 	struct worker_args *args = (struct worker_args *)arg;
-	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
+	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
 	PTM_TH_ENTER(pop);
 
 	int i;
-	for (i = 0; i < args->n_rounds; i++)
-	{
+	for (i = 0; i < args->n_rounds; i++) {
 		int key = rand() % args->num_keys;
-		tm_map_read(args->map, key);
+		TX_map_read(args->map, key);
 	}
 
 	PTM_TH_EXIT();

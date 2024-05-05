@@ -56,19 +56,18 @@ void norec_tx_abort(void)
 	pmemobj_tx_abort(0);
 }
 
-int norec_wrset_get(void *pdirect, void *buf, size_t size)
+bool norec_wrset_get(void *pdirect, void *buf, size_t size)
 {
 	struct tx_meta *tx = get_tx_meta();
 	uintptr_t key = (uintptr_t)pdirect;
 
 	struct tx_hash_entry *entry = tx_hash_get(tx->wrset_lookup, key);
-
 	if (entry == NULL)
-		return 0;
+		return false;
 	
 	void *pval = tx->write_set->arr[entry->index].pval;
 	memcpy(buf, pval, size);
-	return 1;
+	return true;
 }
 
 
@@ -91,15 +90,14 @@ void norec_rdset_add(void *pdirect, void *src, size_t size)
 		.size = size
 	};
 
-	if (tx_vector_append(tx->read_set, &e) < 0) {
+	if (tx_vector_append(tx->read_set, &e, NULL)) {
 		err = errno;
-		goto err_clean;
+		free(pval);
+		goto err_abort;
 	}
 	
 	return;
 
-err_clean:
-	free(pval);
 err_abort:
 	pmemobj_tx_abort(err);
 }
@@ -118,8 +116,8 @@ void norec_tx_write(void *pdirect_field, size_t size, void *buf)
 	memcpy(pval, buf, size);
 
 	uintptr_t field_key = (uintptr_t)pdirect_field;
-	struct tx_hash_entry *entry;
-	if ((entry = tx_hash_get(tx->wrset_lookup, field_key))) {
+	struct tx_hash_entry *entry = tx_hash_get(tx->wrset_lookup, field_key);
+	if (entry != NULL) {
 		struct tx_vec_entry *v = &tx->write_set->arr[entry->index];
 		free(v->pval);
 		v->pval = pval;
@@ -130,22 +128,23 @@ void norec_tx_write(void *pdirect_field, size_t size, void *buf)
 			.size = size,
 			.addr = pdirect_field
 		};
-		size_t idx = tx_vector_append(tx->write_set, &e);
-		if (idx < 0) {
+
+		size_t prev_idx;
+		if (tx_vector_append(tx->write_set, &e, &prev_idx)) {
 			err = errno;
-			goto err_clean;
+			free(pval);
+			goto err_abort;
 		}
 
-		if (tx_hash_put(tx->wrset_lookup, field_key, idx) < 0) {
+		if (tx_hash_put(tx->wrset_lookup, field_key, prev_idx) < 0) {
 			err = errno;
-			goto err_clean;
+			free(pval);
+			goto err_abort;
 		}
 	}
 
 	return;
 
-err_clean:
-	free(pval);
 err_abort:
 	DEBUGLOG("failed to append to wrset");
 	pmemobj_tx_abort(err);
@@ -208,13 +207,8 @@ void norec_thread_exit(void)
 {
 	struct tx_meta *tx = get_tx_meta();
 	tx_add_metrics(tx->num_retries, tx->num_commits);
-
-	tx_vector_empty(tx->write_set);
 	tx_vector_destroy(&tx->write_set);
-
-	tx_vector_empty(tx->read_set);
 	tx_vector_destroy(&tx->read_set);
-
 	tx_hash_destroy(&tx->wrset_lookup);
 }
 

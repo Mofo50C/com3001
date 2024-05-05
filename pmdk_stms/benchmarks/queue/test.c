@@ -65,16 +65,16 @@ int main(int argc, char const *argv[])
 
 	size_t i;
 	for (i = 0; i < 5; i++) {
-		tm_enqueue_back(queue, i);
+		TX_enqueue_back(queue, i);
 		print_queue(queue);
 	}
 
 	for (i = 0; i < 5; i++) {
-		tm_dequeue_front(queue);
+		TX_dequeue_front(queue);
 		print_queue(queue);
 	}
 	
-	tm_dequeue_back(queue);
+	TX_dequeue_back(queue);
 
 	if (queue_destroy(pop, &rootp->queue))
 		printf("error in destroy\n");

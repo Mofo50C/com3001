@@ -40,16 +40,8 @@ int main(int argc, char const *argv[])
 
 	size_t i;
 	for (i = 0; i < 100; i++) {
-		tm_enqueue_back(queue, i);
-		// print_queue(queue);
+		TX_enqueue_back(queue, i);
 	}
-
-	// for (i = 0; i < 5; i++) {
-	// 	tm_dequeue_front(queue);
-	// 	print_queue(queue);
-	// }
-	
-	// tm_dequeue_back(queue);
 
 	if (queue_destroy(&root.queue))
 		printf("error in destroy\n");

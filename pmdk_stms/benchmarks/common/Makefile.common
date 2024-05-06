@@ -6,4 +6,4 @@ clean-algs: clean
 	$(MAKE) -C $(ALGS_DIR) clean
 
 clean::
-	rm -f core.*
+	rm -f log.txt

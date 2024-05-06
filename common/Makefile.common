@@ -19,4 +19,5 @@ endif
 
 .PHONY: clean
 clean::
+	rm -rf core.*
 	rm -rf $(OUT_DIR)

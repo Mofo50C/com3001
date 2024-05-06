@@ -4,3 +4,6 @@ include ../../../common/Makefile.common
 
 clean-algs: clean
 	$(MAKE) -C $(ALGS_DIR) clean
+
+clean::
+	rm -f log.txt

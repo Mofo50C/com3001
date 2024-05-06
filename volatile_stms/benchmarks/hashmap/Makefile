@@ -26,6 +26,3 @@ clean::
 endef
 
 $(foreach element,$(PROGS),$(eval $(call make-prog-target,$(element))))
-
-clean::
-	rm -f log.txt

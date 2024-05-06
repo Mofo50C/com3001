@@ -25,6 +25,7 @@ norec_thread_exit()
 #define NOREC_ONABORT _TX_ONABORT
 #define NOREC_ONCOMMIT _TX_ONCOMMIT
 #define NOREC_FINALLY _TX_FINALLY
+#define NOREC_RETURN _TX_RETURN
 /* end define aliases */
 
 /* val is literal value to be written */
@@ -75,5 +76,6 @@ norec_tx_free((o).oid)
 #define NOREC_ZALLOC TX_ZALLOC
 
 #define NOREC_ABORT norec_tx_abort
+#define NOREC_RESTART norec_tx_restart
 
 #endif

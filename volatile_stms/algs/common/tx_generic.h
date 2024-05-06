@@ -3,7 +3,7 @@
 
 #define _TX_BEGIN()\
 {\
-	__label__ _TX_RETRY_LABEL;\
+	__label__ _TX_RETRY_LABEL, _TX_EARLY_RETURN_LABEL;\
 	jmp_buf _tx_env;\
 	enum tx_stage _stage;\
 	int _tx_errno;\
@@ -41,6 +41,7 @@ _TX_RETRY_LABEL:\
 				_TX_PROCESS_FUNC();\
 				break;\
 			default:\
+_TX_EARLY_RETURN_LABEL:\
 				_TX_PROCESS_FUNC();\
 				break;\
 		}\
@@ -54,5 +55,8 @@ _TX_RETRY_LABEL:\
 		}\
 	}\
 }
+
+#define _TX_RETURN()\
+	goto _TX_EARLY_RETURN_LABEL
 
 #endif

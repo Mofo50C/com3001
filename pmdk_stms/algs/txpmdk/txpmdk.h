@@ -22,6 +22,7 @@
 #define TXPMDK_ONABORT _TX_ONABORT
 #define TXPMDK_ONCOMMIT _TX_ONCOMMIT
 #define TXPMDK_FINALLY _TX_FINALLY
+#define TXPMDK_RETURN _TX_RETURN
 /* end define aliases */
 
 #define TXPMDK_READ_FIELD(o, field) (D_RO(o)->field)

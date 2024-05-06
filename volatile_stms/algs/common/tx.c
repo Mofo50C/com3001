@@ -141,6 +141,7 @@ int tx_begin(jmp_buf env)
 	int err = 0;
 	DEBUGPRINT("[%d] begining", gettid());
 	tx->retry = 0;
+	tx->last_errnum = 0;
 	if (stage == TX_STAGE_NONE) {
 		if (tx_stack_init(&tx->entries)) {
 			err = errno;
@@ -288,6 +289,7 @@ int tx_end(void (*end_cb)(void))
 		tx->stage = TX_STAGE_WORK;
 		tx->level--;
 		if (tx->last_errnum)
+		// if ((tx->last_errnum > 0) || (tx->retry && tx->last_errnum == -1))
 			tx_abort(tx->last_errnum);
 	}
 

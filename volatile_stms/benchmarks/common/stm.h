@@ -38,6 +38,8 @@
 	#define STM_ZNEW NOREC_ZNEW
 
 	#define STM_ABORT NOREC_ABORT
+	#define STM_RETURN NOREC_RETURN
+	#define STM_RESTART NOREC_RESTART
 #else
 	#include <tml.h>
 
@@ -75,8 +77,9 @@
 	#define STM_ZNEW TML_ZNEW
 
 	#define STM_ABORT TML_ABORT
+	#define STM_RETURN TML_RETURN
+	#define STM_RESTART TML_RESTART
 #endif
-
 
 #define STM_READ_FIELD_L(o, field)\
 	(o->field)

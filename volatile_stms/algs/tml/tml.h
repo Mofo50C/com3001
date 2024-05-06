@@ -19,6 +19,7 @@
 #define TML_ONCOMMIT _TX_ONCOMMIT
 #define TML_FINALLY _TX_FINALLY
 #define TML_ONRETRY _TX_ONRETRY
+#define TML_RETURN _TX_RETURN
 /* end define aliases */
 
 #define TML_ENTER tml_thread_enter
@@ -69,5 +70,6 @@ tml_tx_malloc(sizeof(type))
 tml_tx_zalloc(sizeof(type))
 
 #define TML_ABORT tml_tx_abort
+#define TML_RESTART tx_restart
 
 #endif

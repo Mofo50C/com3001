@@ -20,6 +20,7 @@
 #define NOREC_ONCOMMIT _TX_ONCOMMIT
 #define NOREC_FINALLY _TX_FINALLY
 #define NOREC_ONRETRY _TX_ONRETRY
+#define NOREC_RETURN _TX_RETURN
 /* end define aliases */
 
 #define NOREC_ENTER norec_thread_enter
@@ -79,5 +80,6 @@ norec_tx_malloc(sizeof(type))
 norec_tx_zalloc(sizeof(type))
 
 #define NOREC_ABORT norec_tx_abort
+#define NOREC_RESTART tx_restart
 
 #endif

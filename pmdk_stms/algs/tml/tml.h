@@ -25,6 +25,7 @@ tml_thread_exit()
 #define TML_ONABORT _TX_ONABORT
 #define TML_ONCOMMIT _TX_ONCOMMIT
 #define TML_FINALLY _TX_FINALLY
+#define TML_RETURN _TX_RETURN
 /* end define aliases */
 
 #define TML_WRITE_CHECK tml_tx_write()
@@ -66,5 +67,6 @@ tml_tx_free((o).oid)
 #define TML_ZALLOC TX_ZALLOC
 
 #define TML_ABORT tml_tx_abort
+#define TML_RESTART tml_tx_restart
 
 #endif

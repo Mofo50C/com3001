@@ -29,6 +29,8 @@ void norec_tx_write(void *pdirect_field, size_t field_size, void *pval);
 
 void norec_tx_free(PMEMoid poid);
 
+void norec_tx_restart(void);
+
 void norec_tx_abort(void);
 
 int norec_get_retry(void);

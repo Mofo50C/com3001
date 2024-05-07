@@ -128,8 +128,8 @@ void tx_thread_exit(void)
 void tx_shutdown(void)
 {
 	printf("[[TM METRICS]]\n");
-    printf("\tTotal retries: %d\n", total_retries);
-    printf("\tTotal commits: %d\n", total_commits);
+    printf("\tTotal retries: %ju\n", total_retries);
+    printf("\tTotal commits: %ju\n", total_commits);
 }
 
 void tx_startup(void) {}

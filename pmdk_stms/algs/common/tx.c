@@ -173,6 +173,6 @@ void tx_add_metrics(int retries, int commits)
 void tx_print_metrics(void)
 {
 	printf("[[TM METRICS]]\n");
-    printf("\tTotal retries: %d\n", total_retries);
-    printf("\tTotal commits: %d\n", total_commits);
+    printf("\tTotal retries: %ju\n", total_retries);
+    printf("\tTotal commits: %ju\n", total_commits);
 }

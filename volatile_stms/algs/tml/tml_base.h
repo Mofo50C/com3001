@@ -19,11 +19,13 @@ void tml_tx_process(void);
 
 int tml_tx_end(void);
 
+void tml_try_irrevoc(void);
+
 void tml_tx_write(void);
 
 void tml_tx_read(void);
 
-void tml_tx_abort(void);
+void tml_tx_abort(int err);
 
 int tml_tx_free(void *ptr);
 

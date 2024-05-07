@@ -36,9 +36,18 @@
 #define NOREC_WRITE_DIRECT(pdirect_field, val, sz)\
 	_NOREC_WRITE(pdirect_field, val, __typeof__(val), sz)
 
-#define _NOREC_WRITE(pdirect_field, val, t, sz) ({\
+#define _NOREC_WRITE(pdirect_field, val, t, sz) \
+({\
+	__label__ _NWRET;\
 	t _buf = val;\
+	if (norec_isirrevoc()) {\
+		*(pdirect_field) = _buf;\
+		goto _NWRET;\
+	}\
+	CFENCE;\
 	norec_tx_write(pdirect_field, sz, &_buf);\
+_NWRET:\
+	val;\
 })
 
 /* shared reads */
@@ -51,16 +60,26 @@
 #define NOREC_READ_DIRECT(p, sz)\
 	_NOREC_READ(p, __typeof__(*(p)), sz)
 
-#define _NOREC_READ(p, t, sz) ({\
+#define _NOREC_READ(p, t, sz) \
+({\
+	__label__ _NRRET;\
 	t _ret;\
-	if (!norec_wrset_get(p, &_ret, sz)) {\
+	if (norec_isirrevoc()) {\
 		_ret = *(p);\
-		while (norec_prevalidate()) {\
-			norec_validate();\
-			_ret = *(p);\
-		}\
-		norec_rdset_add(p, &_ret, sz);\
+		goto _NRRET;\
 	}\
+	if (norec_wrset_get(p, &_ret, sz)) {\
+		goto _NRRET;\
+	}\
+	_ret = *(p);\
+	CFENCE;\
+	while (norec_prevalidate()) {\
+		norec_validate();\
+		_ret = *(p);\
+		CFENCE;\
+	}\
+	norec_rdset_add(p, &_ret, sz);\
+_NRRET:\
 	_ret;\
 })
 
@@ -79,7 +98,10 @@ norec_tx_malloc(sizeof(type))
 #define NOREC_ZNEW(type)\
 norec_tx_zalloc(sizeof(type))
 
-#define NOREC_ABORT norec_tx_abort
+#define NOREC_ABORT()\
+norec_tx_abort(0)
+
 #define NOREC_RESTART tx_restart
+#define NOREC_IRREVOC norec_try_irrevoc
 
 #endif

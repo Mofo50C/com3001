@@ -5,6 +5,8 @@ ROOT_DIR:=$(abspath ..)
 STM_DIR:=$(abspath ../..)
 ALGS_DIR:=$(STM_DIR)/algs
 
+vpath %.c $(ROOT_DIR)/common
+
 INCS+=-I$(STM_DIR)/include
 INCS+=-I$(ROOT_DIR)/common
 INCS+=$(addprefix -I$(ALGS_DIR)/,$(ALGS))
@@ -14,6 +16,3 @@ LIBS+=-lpthread -lpmemobj -lpmem
 .PHONY: build-algs
 build-algs:
 	$(MAKE) -C $(ALGS_DIR)
-
-build-bench-utils:
-	$(MAKE) -C $(ROOT_DIR)/common

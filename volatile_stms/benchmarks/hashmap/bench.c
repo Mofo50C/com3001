@@ -7,6 +7,7 @@
 #include <time.h>
 
 #include "map.h"
+#include "bench_utils.h"
 
 #define RAII
 #include "stm.h" 
@@ -23,7 +24,7 @@ static struct root root = {.map = NULL};
 struct worker_args {
 	int idx;
 	tm_hashmap_t *map;
-	int n_rounds;
+	int n_secs;
 	int num_keys;
 	int num_threads;
 };
@@ -31,16 +32,20 @@ struct worker_args {
 void *worker_insert(void *arg)
 {
 	struct worker_args *args = (struct worker_args *)arg;
-	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
+	DEBUGPRINT("<P%d> with pid %d [insert]", args->idx, gettid());
 	STM_TH_ENTER();
 
-	int i;
-	for (i = 0; i < args->n_rounds; i++) {
-		int val = args->idx * args->num_threads * args->n_rounds + i;
-		// int val = rand() % 1000;
+	struct timespec s, f;
+	clock_gettime(CLOCK_MONOTONIC, &s);
+	double elapsed;
+	do {
+		int val = rand() % 1000;
 		int key = rand() % args->num_keys;
 		TX_map_insert(args->map, key, val);
-	}
+
+		clock_gettime(CLOCK_MONOTONIC, &f);
+		elapsed = get_elapsed_time(&s, &f);
+	} while (elapsed < args->n_secs);
 
 	STM_TH_EXIT();
 
@@ -50,14 +55,19 @@ void *worker_insert(void *arg)
 void *worker_delete(void *arg)
 {
 	struct worker_args *args = (struct worker_args *)arg;
-	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
+	DEBUGPRINT("<P%d> with pid %d [delete]", args->idx, gettid());
 	STM_TH_ENTER();
 
-	int i;
-	for (i = 0; i < args->n_rounds; i++) {
+	struct timespec s, f;
+	clock_gettime(CLOCK_MONOTONIC, &s);
+	double elapsed;
+	do {
 		int key = rand() % args->num_keys;
 		TX_map_delete(args->map, key);
-	}
+
+		clock_gettime(CLOCK_MONOTONIC, &f);
+		elapsed = get_elapsed_time(&s, &f);
+	} while (elapsed < args->n_secs);
 
 	STM_TH_EXIT();
 
@@ -67,14 +77,19 @@ void *worker_delete(void *arg)
 void *worker_get(void *arg)
 {
 	struct worker_args *args = (struct worker_args *)arg;
-	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
+	DEBUGPRINT("<P%d> with pid %d [get]", args->idx, gettid());
 	STM_TH_ENTER();
 
-	int i;
-	for (i = 0; i < args->n_rounds; i++) {
+	struct timespec s, f;
+	clock_gettime(CLOCK_MONOTONIC, &s);
+	double elapsed;
+	do {
 		int key = rand() % args->num_keys;
 		TX_map_read(args->map, key);
-	}
+
+		clock_gettime(CLOCK_MONOTONIC, &f);
+		elapsed = get_elapsed_time(&s, &f);
+	} while (elapsed < args->n_secs);
 
 	STM_TH_EXIT();
 
@@ -84,7 +99,7 @@ void *worker_get(void *arg)
 int main(int argc, char const *argv[])
 {
 	if (argc < 4) {
-		printf("usage: %s <num_threads> <num_keys> <n_rounds> [inserts] [read] [dels]\n", argv[0]);
+		printf("usage: %s <num_threads> <num_keys> <n_secs> [inserts] [read] [dels]\n", argv[0]);
 		return 1;
 	}
 
@@ -96,7 +111,12 @@ int main(int argc, char const *argv[])
 	}
 
 	int num_keys = atoi(argv[2]);
-	int n_rounds = atoi(argv[3]);
+
+	int n_secs = atoi(argv[3]);
+	if (n_secs < 1) {
+		printf("<num_secs> must be at least 1\n");
+		return 1;
+	}
 
 	int put_ratio = 100;
 	if (argc >= 5)
@@ -141,7 +161,7 @@ int main(int argc, char const *argv[])
 		struct worker_args *args = &arg_data[i];
 		args->idx = i + 1;
 		args->map = map;
-		args->n_rounds = n_rounds;
+		args->n_secs = n_secs;
 		args->num_keys = num_keys;
 		args->num_threads = num_threads;
 
@@ -160,11 +180,10 @@ int main(int argc, char const *argv[])
 	}
 
 	clock_gettime(CLOCK_MONOTONIC, &f);
-	double elapsed_time = (f.tv_sec - s.tv_sec);
-	elapsed_time += (f.tv_nsec - s.tv_nsec) / NANOSEC;
+	double elapsed_time = get_elapsed_time(&s, &f);
 
 	print_map(map);
-	printf("Elapsed: %f\n", elapsed_time);
+	printf("Total time: %f\n", elapsed_time);
 
 	hashmap_destroy(&root.map);
 

@@ -7,10 +7,6 @@
 extern "C" {
 #endif
 
-void tml_startup(void);
-
-void tml_shutdown(void);
-
 void tml_thread_enter(PMEMobjpool *pop);
 
 void tml_thread_exit(void);
@@ -23,19 +19,17 @@ void tml_tx_process(void);
 
 int tml_tx_end(void);
 
+void tml_try_irrevoc(void);
+
+void tml_tx_abort(int err);
+
 void tml_tx_write(void);
 
 void tml_tx_free(PMEMoid poid);
 
 void tml_tx_restart(void);
 
-void tml_tx_abort(void);
-
 void tml_tx_read(void);
-
-int tml_get_retry(void);
-
-pid_t tml_get_tid(void);
 
 #ifdef __cplusplus
 }

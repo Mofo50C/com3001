@@ -21,8 +21,8 @@ struct tx {
 	int num_commits;
 };
 
-static _Atomic int total_retries = 0;
-static _Atomic int total_commits = 0;
+static _Atomic uint64_t total_retries = 0;
+static _Atomic uint64_t total_commits = 0;
 
 static struct tx *get_tx(void)
 {
@@ -289,7 +289,6 @@ int tx_end(void (*end_cb)(void))
 		tx->stage = TX_STAGE_WORK;
 		tx->level--;
 		if (tx->last_errnum)
-		// if ((tx->last_errnum > 0) || (tx->retry && tx->last_errnum == -1))
 			tx_abort(tx->last_errnum);
 	}
 
@@ -317,7 +316,6 @@ void tx_reclaim_frees(void)
 		entry = &tx->free_list->arr[i];
 
 		DEBUGPRINT("[%d] freeing...", tx->tid);
-		// printf("[%d] freeing...\n",tx->tid);
 		if (entry->addr != NULL)
 			free(entry->addr);
 	}

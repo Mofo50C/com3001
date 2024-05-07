@@ -2,11 +2,11 @@ include ../common/bench.common.mk
 
 INCS+=-I$(abspath ..)/hashmap
 
-SRCS+=map.c tm_hashmap.c
+SRCS+=map.c tm_hashmap.c bench_utils.c
 include ../common/Makefile.common
 
 
-build: build-algs build-bench-utils
+build: build-algs
 	$(MAKE) -C $(COMMON_DIR)/lib
 
 prepare-%:

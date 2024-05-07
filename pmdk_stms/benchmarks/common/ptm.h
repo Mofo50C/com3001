@@ -39,14 +39,15 @@
 	#define PTM_ABORT TXPMDK_ABORT
 	#define PTM_RETURN TXPMDK_RETURN
 	#define PTM_RESTART
+	#define PTM_IRREVOC
 #elif defined(NOREC)
 	#include <norec.h>
 
 	#define PTM_TH_ENTER NOREC_ENTER
 	#define PTM_TH_EXIT NOREC_EXIT
 
-	#define PTM_STARTUP norec_startup
-	#define PTM_SHUTDOWN norec_shutdown
+	#define PTM_STARTUP tx_startup
+	#define PTM_SHUTDOWN tx_shutdown
 
 	#if defined(RAII)
 		#define PTM_BEGIN NOREC_BEGIN
@@ -77,14 +78,15 @@
 	#define PTM_ABORT NOREC_ABORT
 	#define PTM_RETURN NOREC_RETURN
 	#define PTM_RESTART NOREC_RESTART
+	#define PTM_IRREVOC NOREC_IRREVOC
 #else
 	#include <tml.h>
 
 	#define PTM_TH_ENTER TML_ENTER
 	#define PTM_TH_EXIT TML_EXIT
 
-	#define PTM_STARTUP tml_startup
-	#define PTM_SHUTDOWN tml_shutdown
+	#define PTM_STARTUP tx_startup
+	#define PTM_SHUTDOWN tx_shutdown
 
 	#if defined(RAII)
 		#define PTM_BEGIN TML_BEGIN
@@ -115,6 +117,7 @@
 	#define PTM_ABORT TML_ABORT
 	#define PTM_RETURN TML_RETURN
 	#define PTM_RESTART TML_RESTART
+	#define PTM_IRREVOC TML_IRREVOC
 #endif
 
 #define PTM_READ_FIELD_L(o, field)\

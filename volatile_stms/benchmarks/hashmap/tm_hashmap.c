@@ -14,7 +14,7 @@
 #define MAX_LOAD_FACTOR 1
 #define MAX_GROWS 27
 
-// #define HASHMAP_RESIZABLE
+#define HASHMAP_RESIZABLE
 
 #define INIT_CAP TABLE_PRIMES[0]
 
@@ -111,7 +111,7 @@ int hashmap_put(struct tm_hashmap *h, uint64_t key, int value, int *retval)
 	if (entry == NULL) {
 		struct tm_hashmap_entry *new_entry = hashmap_entry_new(key, key_hash, value);
 		if (new_entry == NULL)
-			goto err_return;
+			return -1;
 
 		buckets->arr[b] = new_entry;
 		h->length++;
@@ -131,7 +131,7 @@ int hashmap_put(struct tm_hashmap *h, uint64_t key, int value, int *retval)
 		if (!found) {
 			struct tm_hashmap_entry *new_entry = hashmap_entry_new(key, key_hash, value);
 			if (new_entry == NULL)
-				goto err_return;
+				return -1;
 
 			prev->next = new_entry;
 			h->length++;
@@ -142,9 +142,6 @@ int hashmap_put(struct tm_hashmap *h, uint64_t key, int value, int *retval)
 	hashmap_resize(h);
 #endif
 	return found;
-
-err_return:
-	return -1;
 }
 
 /* returns -1 on error, 1 if updated and 0 if inserted new */
@@ -165,22 +162,22 @@ int hashmap_put_tm(struct tm_hashmap *h, uint64_t key, int value, int *retval)
 			STM_WRITE_FIELD(h, length, len);
 		} else {
 			if (STM_READ_FIELD(entry, key) == key) {
-				found = 1;
 				if (retval)
 					*retval = STM_READ_FIELD(entry, value);
 				STM_WRITE_FIELD(entry, value, value);
-				goto end;
+				found = 1;
+				STM_RETURN();
 			}
 
 			struct tm_hashmap_entry *prev = entry;
 			struct tm_hashmap_entry *curr = STM_READ_FIELD(entry, next);
 			while (curr != NULL) {
 				if (STM_READ_FIELD(curr, key) == key) {
-					found = 1;
 					if (retval)
 						*retval = STM_READ_FIELD(curr, value);
 					STM_WRITE_FIELD(curr, value, value);
-					goto end;
+					found = 1;
+					STM_RETURN();
 				}
 				prev = curr;
 				curr = STM_READ_FIELD(prev, next);
@@ -191,7 +188,6 @@ int hashmap_put_tm(struct tm_hashmap *h, uint64_t key, int value, int *retval)
 			size_t len = STM_READ_FIELD(h, length) + 1;
 			STM_WRITE_FIELD(h, length, len);
 		}
-end:	;
 	} STM_ONABORT {
 		DEBUGABORT();
 		ret = 1;
@@ -199,6 +195,10 @@ end:	;
 
 	if (ret)
 		return -1;
+
+#if defined(HASHMAP_RESIZABLE)
+	hashmap_resize(h);
+#endif
 
 	return found;
 }
@@ -247,18 +247,18 @@ int hashmap_delete_tm(struct tm_hashmap *h, uint64_t key, int *retval)
 		struct tm_hashmap_buckets *buckets = STM_READ_FIELD(h, buckets);
 		struct tm_hashmap_entry *head = STM_READ_FIELD(buckets, arr[b]);
 		if (head == NULL)
-			goto end;
+			STM_RETURN();
 
 		if (STM_READ_FIELD(head, key) == key) {
-			found = 1;
-			if (retval)
-				*retval = STM_READ_FIELD(head, value);
 			struct tm_hashmap_entry *next = STM_READ_FIELD(head, next);
 			STM_WRITE_FIELD(buckets, arr[b], next);
+			if (retval)
+				*retval = STM_READ_FIELD(head, value);
 			STM_FREE(head);
 			size_t len = STM_READ_FIELD(h, length) - 1;
 			STM_WRITE_FIELD(h, length, len);
-			goto end;
+			found = 1;
+			STM_RETURN();
 		}
 
 		struct tm_hashmap_entry *prev = head;
@@ -266,20 +266,19 @@ int hashmap_delete_tm(struct tm_hashmap *h, uint64_t key, int *retval)
 
 		while(curr != NULL) {
 			if (STM_READ_FIELD(curr, key) == key) {
-				found = 1;
-				if (retval)
-					*retval = STM_READ_FIELD(curr, value);
 				struct tm_hashmap_entry *next = STM_READ_FIELD(curr, next);
 				STM_WRITE_FIELD(prev, next, next);
+				if (retval)
+					*retval = STM_READ_FIELD(curr, value);
 				STM_FREE(curr);
 				size_t len = STM_READ_FIELD(h, length) - 1;
 				STM_WRITE_FIELD(h, length, len);
-				goto end;
+				found = 1;
+				STM_RETURN();
 			}
 			prev = curr;
 			curr = STM_READ_FIELD(curr, next);
 		}
-end:	;
 	} STM_ONABORT {
 		DEBUGABORT();
 		ret = 1;
@@ -382,13 +381,13 @@ int hashmap_resize_tm(struct tm_hashmap *h)
 {
 	int ret = 0;
 	STM_BEGIN() {
-		int old_cap = STM_READ(h->capacity);
-		int num_grows = STM_READ(h->num_grows);
-		int length = STM_READ(h->length);
+		int old_cap = STM_READ_FIELD(h, capacity);
+		int num_grows = STM_READ_FIELD(h, num_grows);
+		int length = STM_READ_FIELD(h, length);
 		if (((length / (float)old_cap) < MAX_LOAD_FACTOR) || (num_grows >= MAX_GROWS))
-			goto end;
+			STM_RETURN();
 
-		struct tm_hashmap_buckets *old_buckets = STM_READ(h->buckets);
+		struct tm_hashmap_buckets *old_buckets = STM_READ_FIELD(h, buckets);
 
 		size_t new_cap = TABLE_PRIMES[++num_grows];
 		size_t sz = sizeof(struct tm_hashmap_buckets) + sizeof(struct tm_hashmap_entry *) * new_cap;
@@ -397,26 +396,25 @@ int hashmap_resize_tm(struct tm_hashmap *h)
 
 		int i;
 		for (i = 0; i < old_cap; i++) {
-			struct tm_hashmap_entry *old_head = STM_READ(old_buckets->arr[i]);
+			struct tm_hashmap_entry *old_head = STM_READ_FIELD(old_buckets, arr[i]);
 			if (old_head == NULL)
 				continue;
 
 			struct tm_hashmap_entry *temp;
 			while (old_head != NULL) {
-				temp = STM_READ(old_head->next);
-				int b = STM_READ(old_head->hash) % new_cap;
+				temp = STM_READ_FIELD(old_head, next);
+				int b = STM_READ_FIELD(old_head, hash) % new_cap;
 				struct tm_hashmap_entry *new_head = new_buckets->arr[b];
-				STM_WRITE(old_head->next, new_head);
+				STM_WRITE_FIELD(old_head, next, new_head);
 				new_buckets->arr[b] = old_head;
 				old_head = temp;
 			}
 		}
 
-		STM_WRITE(h->num_grows, num_grows);
-		STM_WRITE(h->capacity, new_cap);
-		STM_WRITE(h->buckets, new_buckets);
+		STM_WRITE_FIELD(h, num_grows, num_grows);
+		STM_WRITE_FIELD(h, capacity, new_cap);
+		STM_WRITE_FIELD(h, buckets, new_buckets);
 		STM_FREE(old_buckets);
-end:	;
 	} STM_ONABORT {
 		DEBUGABORT();
 		ret = 1;

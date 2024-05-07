@@ -6,6 +6,10 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#define CFENCE  __asm__ volatile ("":::"memory")
+#define CAS(ptr, expected, desired)\
+__atomic_compare_exchange_n(ptr, expected, desired, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
+
 #define _MNOOP do {} while(0)
 #define _DLOG(fmt, ...) do { fprintf(stderr, "[%d] %s:%d:%s(): " fmt "\n", gettid(), __FILE__, __LINE__, __func__, ##__VA_ARGS__); } while(0)
 #define _DPRINT(fmt, ...) do { fprintf(stderr, fmt "\n", ##__VA_ARGS__); } while(0)

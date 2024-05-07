@@ -89,7 +89,7 @@ int queue_pop_back_tm(struct tm_queue *q, int *retval)
     STM_BEGIN() {
         struct tm_queue_entry *back = STM_READ_FIELD(q, back);
         if (STM_READ_FIELD(q, front) == NULL && back == NULL)
-            goto end_empty;
+            STM_RETURN();
 
         succ = 1;
         if (retval)
@@ -106,7 +106,6 @@ int queue_pop_back_tm(struct tm_queue *q, int *retval)
         STM_FREE(back);
         size_t len = STM_READ_FIELD(q, length) - 1;
         STM_WRITE_FIELD(q, length, len);
-end_empty:  ;
     } STM_ONABORT {
         DEBUGABORT();
         ret = 1;
@@ -125,7 +124,7 @@ int queue_pop_front_tm(struct tm_queue *q, int *retval)
     STM_BEGIN() {
         struct tm_queue_entry *front = STM_READ_FIELD(q, front);
         if (front == NULL && STM_READ_FIELD(q, back) == NULL)
-            goto end_empty;
+            STM_RETURN();
 
         succ = 1;
         if (retval)
@@ -142,7 +141,6 @@ int queue_pop_front_tm(struct tm_queue *q, int *retval)
         STM_FREE(front);
         size_t len = STM_READ_FIELD(q, length) - 1;
         STM_WRITE_FIELD(q, length, len);
-end_empty:  ;
     } STM_ONABORT {
         DEBUGABORT();
         ret = 1;

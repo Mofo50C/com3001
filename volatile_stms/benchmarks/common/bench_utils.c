@@ -5,6 +5,8 @@
 #include <time.h>
 #include "bench_utils.h"
 
+#define NANOSEC 1000000000.0
+
 int msleep(int msec)
 {
     struct timespec ts;
@@ -23,4 +25,12 @@ int msleep(int msec)
     } while (res);
 
     return res;
+}
+
+double get_elapsed_time(struct timespec *start, struct timespec *finish)
+{
+    double elapsed = (finish->tv_sec - start->tv_sec);
+    elapsed += (finish->tv_nsec - start->tv_nsec) / NANOSEC;
+
+    return elapsed;
 }

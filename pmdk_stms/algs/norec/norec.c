@@ -3,23 +3,15 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdatomic.h>
+#include <stdbool.h>
 #include "tx.h"
 #include "norec_base.h"
 #include "tx_util.h"
 #include "util.h"
 
-#define VEC_INIT 8
-
 struct tx_meta {
-	pid_t tid;
-	PMEMobjpool *pop;
-	int loc;
-	int retry;
-	int level;
-	int num_retries;
-	int num_commits;
-	struct tx_vec *free_list;
+	uint64_t loc;
+	int irrevoc;
 	struct tx_vec *read_set;
 	struct tx_vec *write_set;
 	struct tx_hash *wrset_lookup;
@@ -32,29 +24,21 @@ static struct tx_meta *get_tx_meta(void)
 }
 
 /* global lock */
-static _Atomic int glb = 0;
+static uint64_t glb = 0;
 
-int norec_get_retry(void)
+int norec_isirrevoc(void)
 {
-	return get_tx_meta()->retry;
-}
-
-pid_t norec_get_tid(void)
-{
-	return get_tx_meta()->tid;
+	return get_tx_meta()->irrevoc;
 }
 
 void norec_tx_restart(void)
 {
-	struct tx_meta *tx = get_tx_meta();
-	tx->retry = 1;
-	tx->num_retries++;
-	pmemobj_tx_abort(-1);
+	return tx_restart();
 }
 
-void norec_tx_abort(void)
+void norec_tx_abort(int err)
 {
-	pmemobj_tx_abort(0);
+	return pmemobj_tx_abort(err);
 }
 
 bool norec_wrset_get(void *pdirect, void *buf, size_t size)
@@ -70,7 +54,6 @@ bool norec_wrset_get(void *pdirect, void *buf, size_t size)
 	memcpy(buf, pval, size);
 	return true;
 }
-
 
 void norec_rdset_add(void *pdirect, void *src, size_t size)
 {
@@ -100,7 +83,7 @@ void norec_rdset_add(void *pdirect, void *src, size_t size)
 	return;
 
 err_abort:
-	pmemobj_tx_abort(err);
+	norec_tx_abort(err);
 }
 
 void norec_tx_write(void *pdirect_field, size_t size, void *buf)
@@ -148,54 +131,71 @@ void norec_tx_write(void *pdirect_field, size_t size, void *buf)
 
 err_abort:
 	DEBUGLOG("failed to append to wrset");
-	pmemobj_tx_abort(err);
+	norec_tx_abort(err);
 }
 
 void norec_tx_free(PMEMoid poid)
 {
-	struct tx_meta *tx = get_tx_meta();
+	norec_try_irrevoc();
+	return tx_free(poid);
+}
 
+int validate_rdset(struct tx_vec *rdset)
+{
 	int i;
-	for (i = 0; i < tx->free_list->length; i++)
-	{
-		struct tx_vec_entry *e = &tx->free_list->arr[i];
-		if (OID_EQUALS(e->oid, poid)) {
-			e->oid = OID_NULL;
-			break;
-		}
-	}
+	for (i = 0; i < rdset->length; i++) {
+		struct tx_vec_entry *e = &rdset->arr[i];
 
-	struct tx_vec_entry e = {
-		.oid = poid,
-		.addr = NULL,
-		.pval = NULL,
-		.size = 0
-	};
-
-	if (tx_vector_append(tx->free_list, &e, NULL)) {
-		DEBUGLOG("tx_free failed");
-		pmemobj_tx_abort(errno);
+		DEBUGPRINT("[%d] validating...", tx_get_tid());
+		if (memcmp(e->pval, e->addr, e->size))
+			return 0;
 	}
+	return 1;
+}
+
+void persist_redo_wrset(struct tx_vec *wrset)
+{
+	struct tx_vec_entry *entry;
+	int i;
+	for (i = 0; i < wrset->length; i++) {
+		entry = &wrset->arr[i];
+
+		DEBUGPRINT("[%d] writing...", tx_get_tid());
+		pmemobj_tx_add_range_direct(entry->addr, entry->size);
+		memcpy(entry->addr, entry->pval, entry->size);
+	}
+}
+
+void norec_try_irrevoc(void)
+{
+	struct tx_meta *tx = get_tx_meta();
+	if (tx->irrevoc)
+		return;
+	
+	while (!CAS(&glb, &tx->loc, tx->loc + 1)) {
+		norec_validate();
+	}
+	persist_redo_wrset(tx->write_set);
+	tx->loc++;
+	tx->irrevoc = 1;
 }
 
 void norec_validate(void)
 {
 	struct tx_meta *tx = get_tx_meta();
+	if (tx->irrevoc)
+		return;
 
 	int time;
 	while (1) {
 		time = glb;
 		if (IS_ODD(time)) continue;
 
-		int i;
-		for (i = 0; i < tx->read_set->length; i++) {
-			struct tx_vec_entry *e = &tx->read_set->arr[i];
+		CFENCE;
+		if (!validate_rdset(tx->read_set))
+			return norec_tx_restart();
 
-			DEBUGPRINT("[%d] validating...", tx->tid);
-			if (memcmp(e->pval, e->addr, e->size))
-				return norec_tx_restart();
-		}
-
+		CFENCE;
 		if (time == glb) {
 			tx->loc = time;
 			return;
@@ -204,18 +204,13 @@ void norec_validate(void)
 }
 
 int norec_prevalidate(void) {
-	struct tx_meta *tx = get_tx_meta();
-	return tx->loc != glb;
+	return get_tx_meta()->loc != glb;
 }
 
 void norec_thread_enter(PMEMobjpool *pop)
 {
 	struct tx_meta *tx = get_tx_meta();
-	tx->tid = gettid();
-	tx->pop = pop;
-	tx->num_retries = 0;
-	if (tx_vector_init(&tx->free_list))
-		goto err_abort;
+	tx_thread_enter(pop);
 
 	if (tx_vector_init(&tx->write_set))
 		goto err_abort;
@@ -236,114 +231,81 @@ err_abort:
 void norec_thread_exit(void)
 {
 	struct tx_meta *tx = get_tx_meta();
-	tx_add_metrics(tx->num_retries, tx->num_commits);
-	tx_vector_destroy(&tx->free_list);
+	tx_thread_exit();
 	tx_vector_destroy(&tx->write_set);
 	tx_vector_destroy(&tx->read_set);
 	tx_hash_destroy(&tx->wrset_lookup);
-}
-
-void norec_startup(void) {}
-
-void norec_shutdown(void)
-{
-	tx_print_metrics();
 }
 
 int norec_tx_begin(jmp_buf env)
 {
 	enum pobj_tx_stage stage = pmemobj_tx_stage();
 	struct tx_meta *tx = get_tx_meta();
-
 	if (stage == TX_STAGE_NONE) {
-		tx->retry = 0;
-
-		do {
-			tx->loc = glb;
-		} while (IS_ODD(tx->loc));
-	} else if (stage == TX_STAGE_WORK) {
-		tx->level++;
+		tx->irrevoc = 0;
+		// do {
+		// 	tx->loc = glb;
+		// } while (IS_ODD(tx->loc));	
+		tx->loc = glb & ~(1L);
 	}
 	
-	return pmemobj_tx_begin(tx->pop, env, TX_PARAM_NONE, TX_PARAM_NONE);
-}
-
-void tx_reclaim_frees(void)
-{
-	struct tx_meta *tx = get_tx_meta();
-	struct tx_vec_entry *entry;
-	int i;
-	for (i = 0; i < tx->free_list->length; i++) {
-		entry = &tx->free_list->arr[i];
-
-		// fprintf(stderr, "[%d] before freeing...\n", tx->tid);
-		DEBUGPRINT("[%d] freeing...", tx->tid);
-		if (!OID_IS_NULL(entry->oid))
-			pmemobj_tx_free(entry->oid);
-		// fprintf(stderr, "[%d] after freeing...\n", tx->tid);
-	}
+	return tx_begin(env);
 }
 
 void norec_tx_commit(void)
 {
 	struct tx_meta *tx = get_tx_meta();
 
-	if ((tx->level > 0) || (tx->write_set->length == 0)) {
+	if (tx_get_level() > 0) {
 		return pmemobj_tx_commit();
 	}
 
-	while (!atomic_compare_exchange_strong(&glb, &tx->loc, tx->loc + 1)) {
+	if (!tx->write_set->length) {
+		return pmemobj_tx_commit();
+	}
+
+	if (tx->irrevoc) {
+		tx_reclaim_frees();
+		return pmemobj_tx_commit();
+	}
+
+	while (!CAS(&glb, &tx->loc, tx->loc + 1)) {
 		norec_validate();
 	}
+	persist_redo_wrset(tx->write_set);
+	CFENCE;
+	glb = tx->loc + 2;
 
-	struct tx_vec_entry *entry;
-	int i;
-	for (i = 0; i < tx->write_set->length; i++) {
-		entry = &tx->write_set->arr[i];
-
-		DEBUGPRINT("[%d] writing...", tx->tid);
-		pmemobj_tx_add_range_direct(entry->addr, entry->size);
-		memcpy(entry->addr, entry->pval, entry->size);
-	}
-
-	// printf("[%d] before...\n", tx->tid);
+	DEBUGPRINT("[%d] committing...", tx_get_tid());
 	tx_reclaim_frees();
-	// printf("[%d] after...\n", tx->tid);
 	pmemobj_tx_commit();
 
-	DEBUGPRINT("[%d] committing...", tx->tid);
 }
 
 void norec_tx_process(void)
 {
-	enum pobj_tx_stage stage = pmemobj_tx_stage();
+	return tx_process(norec_tx_commit);
+}
 
-	if (stage == TX_STAGE_WORK) {
-		norec_tx_commit();
-	} else {
-		pmemobj_tx_process();
+void norec_on_end(void)
+{
+	struct tx_meta *tx= get_tx_meta();
+
+	tx_vector_empty(tx->write_set);
+	tx_vector_empty(tx->read_set);
+	tx_hash_empty(tx->wrset_lookup);
+	
+	if (tx_get_retry())
+		return;
+	
+	/* release the lock on end */
+	if (tx->irrevoc && IS_ODD(tx->loc)) {
+		CFENCE;
+		glb = tx->loc + 1;
 	}
 }
 
 int norec_tx_end(void)
 {
-	struct tx_meta *tx= get_tx_meta();
-	if (tx->level > 0) {
-		tx->level--;
-	} else {
-		tx_vector_clear(tx->free_list);
-		tx_vector_empty(tx->write_set);
-		tx_vector_empty(tx->read_set);
-		tx_hash_empty(tx->wrset_lookup);
-		
-		if (!tx->retry && !pmemobj_tx_errno()) {
-			tx->num_commits++;
-		}
-		
-		/* release the lock on end (commit or abort) except when retrying */
-		if (!tx->retry)
-			glb = tx->loc + 2;
-	}
-
-	return pmemobj_tx_end();
+	return tx_end(norec_on_end);
 }

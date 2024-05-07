@@ -6,12 +6,12 @@
 #include <pthread.h>
 #include <time.h>
 
+#include "bench_utils.h"
 #include "queue.h"
 
 #define RAII
 #include "stm.h" 
 
-#define NANOSEC 1000000000.0
 #define CONST_MULT 100
 
 struct root {
@@ -22,7 +22,7 @@ static struct root root = {.queue = NULL};
 
 struct worker_args {
 	int idx;
-	int n_rounds;
+	int n_secs;
 	int num_threads;
 	tm_queue_t *queue;
 };
@@ -32,17 +32,22 @@ void *worker_enqueue(void *arg)
 	struct worker_args *args = (struct worker_args *)arg;
 	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
 	STM_TH_ENTER();
-
-	int i;
-	for (i = 0; i < args->n_rounds; i++) {
-		int val = args->idx * args->num_threads * args->n_rounds + i;
+	
+	struct timespec s, f;
+	clock_gettime(CLOCK_MONOTONIC, &s);
+	double elapsed;
+	do {
+		int val = rand() & 1000;
 		int split = rand() % 2;
 		if (split) {
 			TX_enqueue_back(args->queue, val);
 		} else {
 			TX_enqueue_front(args->queue, val);
 		}
-	}
+	
+		clock_gettime(CLOCK_MONOTONIC, &f);
+		elapsed = get_elapsed_time(&s, &f);
+	} while (elapsed < args->n_secs);
 
 	STM_TH_EXIT();
 
@@ -55,15 +60,19 @@ void *worker_peak(void *arg)
 	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
 	STM_TH_ENTER();
 
-	int i;
-	for (i = 0; i < args->n_rounds; i++) {
+	struct timespec s, f;
+	clock_gettime(CLOCK_MONOTONIC, &s);
+	double elapsed;
+	do {
 		int split = rand() % 2;
 		if (split) {
 			TX_peak_back(args->queue);
 		} else {
 			TX_peak_front(args->queue);
 		}
-	}
+		clock_gettime(CLOCK_MONOTONIC, &f);
+		elapsed = get_elapsed_time(&s, &f);
+	} while (elapsed < args->n_secs);
 
 	STM_TH_EXIT();
 
@@ -76,15 +85,19 @@ void *worker_dequeue(void *arg)
 	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
 	STM_TH_ENTER();
 
-	int i;
-	for (i = 0; i < args->n_rounds; i++) {		
+	struct timespec s, f;
+	clock_gettime(CLOCK_MONOTONIC, &s);
+	double elapsed;
+	do {		
 		int split = rand() % 2;
 		if (split) {
 			TX_dequeue_back(args->queue);
 		} else {
 			TX_dequeue_front(args->queue);
 		}
-	}
+		clock_gettime(CLOCK_MONOTONIC, &f);
+		elapsed = get_elapsed_time(&s, &f);
+	} while (elapsed < args->n_secs);
 
 	STM_TH_EXIT();
 
@@ -99,15 +112,13 @@ int main(int argc, char const *argv[])
 	}
 	
 	int num_threads = atoi(argv[1]);
-
 	if (num_threads < 1) {
 		printf("<num_threads> must be at least 1\n");
 		return 1;
 	}
 
-	int n_rounds = atoi(argv[2]);
-	
-	if (n_rounds < 1) {
+	int n_secs = atoi(argv[2]);
+	if (n_secs < 1) {
 		printf("<num_rounds> must be at least 1\n");
 		return 1;
 	}
@@ -155,7 +166,7 @@ int main(int argc, char const *argv[])
 		args->idx = i + 1;
 		args->queue = queue;
 
-		args->n_rounds = n_rounds;
+		args->n_secs = n_secs;
 		args->num_threads = num_threads;
 
 		int r = rand() % (100 * CONST_MULT);
@@ -173,10 +184,9 @@ int main(int argc, char const *argv[])
 	}
 
 	clock_gettime(CLOCK_MONOTONIC, &f);
-	double elapsed_time = (f.tv_sec - s.tv_sec);
-	elapsed_time += (f.tv_nsec - s.tv_nsec) / NANOSEC;
+	double elapsed_time = get_elapsed_time(&s, &f);
 
-	print_queue(queue);
+	// print_queue(queue);
 	printf("Elapsed: %f\n", elapsed_time);
 
 	if (queue_destroy(&root.queue))

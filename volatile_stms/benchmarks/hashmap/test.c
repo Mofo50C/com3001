@@ -7,6 +7,7 @@
 
 #include "map.h"
 
+#define NOREC
 #define RAII
 #include "stm.h" 
 
@@ -35,11 +36,20 @@ int main(int argc, char const *argv[])
 
 	STM_TH_ENTER();
 
-	TX_map_insert(map, 3, 21);
+	STM_BEGIN() {
+		STM_ABORT();
+	}STM_ONABORT {
+		printf("abort first\n");
+	} STM_END
+
+	STM_BEGIN() {
+	} STM_ONCOMMIT {
+		printf("commit second\n");
+	} STM_END
 
 	STM_TH_EXIT();
 
-    print_map(map);
+    // print_map(map);
 
 	hashmap_destroy(&root.map);
 

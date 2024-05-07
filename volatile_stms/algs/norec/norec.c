@@ -2,7 +2,6 @@
 #include <unistd.h>
 
 #include <stdlib.h>
-#include <stdatomic.h>
 #include <errno.h>
 #include <string.h>
 #include "tx.h"
@@ -11,7 +10,8 @@
 #include "util.h"
 
 struct tx_meta {
-	int loc;
+	uint64_t loc;
+	int irrevoc;
 	struct tx_vec *read_set;
 	struct tx_vec *write_set;
 	struct tx_hash *wrset_lookup;
@@ -26,16 +26,21 @@ static struct tx_meta *get_tx_meta(void)
 /* algorithm specific */
 
 /* global lock */
-static _Atomic int glb = 0;
+static uint64_t glb = 0;
 
 void norec_tx_restart(void)
 {
-	tx_restart();
+	return tx_restart();
 }
 
-void norec_tx_abort(void)
+void norec_tx_abort(int err)
 {
-	tx_abort(0);
+	return tx_abort(err);
+}
+
+int norec_isirrevoc(void)
+{
+	return get_tx_meta()->irrevoc;
 }
 
 void norec_thread_enter(void)
@@ -71,11 +76,12 @@ int norec_tx_begin(jmp_buf env)
 {
 	enum tx_stage stage = tx_get_stage();
 	struct tx_meta *tx = get_tx_meta();
-
 	if (stage == TX_STAGE_NONE) {
-		do {
-			tx->loc = glb;
-		} while (IS_ODD(tx->loc));
+		tx->irrevoc = 0;
+		// do {
+		// 	tx->loc = glb;
+		// } while (IS_ODD(tx->loc));
+		tx->loc = glb & ~(1L);
 	}
 
 	return tx_begin(env);
@@ -84,7 +90,7 @@ int norec_tx_begin(jmp_buf env)
 void norec_rdset_add(void *pdirect, void *buf, size_t size)
 {
 	struct tx_meta *tx = get_tx_meta();
-	ASSERT_IN_WORK(tx_get_stage())
+	ASSERT_IN_WORK(tx_get_stage());
 
 	int err = 0;
 	void *pval = malloc(size);
@@ -111,7 +117,7 @@ void norec_rdset_add(void *pdirect, void *buf, size_t size)
 
 err_abort:
 	DEBUGLOG("tx_read failed");
-	tx_abort(err);
+	norec_tx_abort(err);
 }
 
 bool norec_wrset_get(void *pdirect, void *retbuf, size_t size)
@@ -176,27 +182,67 @@ void norec_tx_write(void *pdirect_field, size_t size, void *buf)
 
 err_abort:
 	DEBUGLOG("tx_write failed");
-	tx_abort(err);
+	norec_tx_abort(err);
+}
+
+void redo_wrset(struct tx_vec *wrset)
+{
+	struct tx_vec_entry *entry;
+	int i;
+
+	for (i = 0; i < wrset->length; i++) {
+		entry = &wrset->arr[i];
+
+		DEBUGPRINT("[%d] writing...", tx_get_tid());
+		memcpy(entry->addr, entry->pval, entry->size);
+	}
+}
+
+int validate_rdset(struct tx_vec *rdset)
+{
+	int i;
+	for (i = 0; i < rdset->length; i++) {
+		struct tx_vec_entry *e = &rdset->arr[i];
+
+		DEBUGPRINT("[%d] validating...", tx_get_tid());
+		if (memcmp(e->pval, e->addr, e->size))
+			return 0;
+	}
+	
+	return 1;
+}
+
+void norec_try_irrevoc(void)
+{
+	struct tx_meta *tx = get_tx_meta();
+	ASSERT_IN_WORK(tx_get_stage());
+	if (tx->irrevoc)
+		return;
+	
+	while (!CAS(&glb, &tx->loc, tx->loc + 1)) {
+		norec_validate();
+	}
+	redo_wrset(tx->write_set);
+	tx->loc++;
+	tx->irrevoc = 1;
 }
 
 void norec_validate(void)
 {
 	struct tx_meta *tx = get_tx_meta();
+	if (tx->irrevoc)
+		return;
 
 	int time;
 	while (1) {
 		time = glb;
 		if (IS_ODD(time)) continue;
-
-		int i;
-		for (i = 0; i < tx->read_set->length; i++) {
-			struct tx_vec_entry *e = &tx->read_set->arr[i];
-
-			DEBUGPRINT("[%d] validating...", tx_get_tid());
-			if (memcmp(e->pval, e->addr, e->size))
-				return norec_tx_restart();
-		}
-
+		
+		CFENCE;
+		if (!validate_rdset(tx->read_set))
+			return norec_tx_restart();
+		
+		CFENCE;
 		if (time == glb) {
 			tx->loc = time;
 			return;
@@ -205,12 +251,12 @@ void norec_validate(void)
 }
 
 bool norec_prevalidate(void) {
-	struct tx_meta *tx = get_tx_meta();
-	return tx->loc != glb;
+	return get_tx_meta()->loc != glb;
 }
 
 int norec_tx_free(void *ptr)
 {
+	norec_try_irrevoc();
 	return tx_free(ptr);
 }
 
@@ -229,23 +275,25 @@ void norec_tx_commit(void)
 	struct tx_meta *tx = get_tx_meta();
 	ASSERT_IN_WORK(tx_get_stage());
 
-	if ((tx_get_level() > 0) || (tx->write_set->length == 0)) {
+	if (tx_get_level() > 0) {
 		return tx_commit();
 	}
 
-	while (!atomic_compare_exchange_strong(&glb, &tx->loc, tx->loc + 1)) {
+	if (!tx->write_set->length) {
+		return tx_commit();
+	}
+
+	if (tx->irrevoc) {
+		tx_reclaim_frees();
+		return tx_commit();
+	}
+
+	while (!CAS(&glb, &tx->loc, tx->loc + 1)) {
 		norec_validate();
 	}
-
-	struct tx_vec_entry *entry;
-	int i;
-
-	for (i = 0; i < tx->write_set->length; i++) {
-		entry = &tx->write_set->arr[i];
-
-		DEBUGPRINT("[%d] writing...", tx_get_tid());
-		memcpy(entry->addr, entry->pval, entry->size);
-	}
+	redo_wrset(tx->write_set);
+	CFENCE;
+	glb = tx->loc + 2;
 
 	tx_reclaim_frees();
 	tx_commit();
@@ -263,9 +311,14 @@ void norec_on_end(void)
 	tx_vector_empty(tx->read_set);
 	tx_hash_empty(tx->wrset_lookup);
 
-	/* release lock if we were writing tx */
-	if (!tx_get_retry())
-		glb = tx->loc + 2;
+	if (tx_get_retry())
+		return;
+
+	/* release the lock on end */
+	if (tx->irrevoc && IS_ODD(tx->loc)) {
+		CFENCE;
+		glb = tx->loc + 1;
+	}
 }
 
 int norec_tx_end(void)

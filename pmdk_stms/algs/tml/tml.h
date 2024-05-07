@@ -1,14 +1,15 @@
 #ifndef TML_H
 #define TML_H 1
 
+#include "tx.h"
 #include "tml_base.h"
 
 /* define the generic macros with current stm-specific functions */
 #define _TX_BEGIN_FUNC tml_tx_begin
 #define _TX_PROCESS_FUNC tml_tx_process
 #define _TX_END_FUNC tml_tx_end
-#define _TX_GET_RETRY tml_get_retry
-#define _TX_GET_TID tml_get_tid
+#define _TX_GET_RETRY tx_get_retry
+#define _TX_GET_TID tx_get_tid
 /* end define generics */
 
 #include "tx_generic.h"
@@ -66,7 +67,10 @@ tml_tx_free((o).oid)
 #define TML_ZNEW TX_ZNEW
 #define TML_ZALLOC TX_ZALLOC
 
-#define TML_ABORT tml_tx_abort
+#define TML_ABORT()\
+tml_tx_abort(0)
+
 #define TML_RESTART tml_tx_restart
+#define TML_IRREVOC tml_try_irrevoc
 
 #endif

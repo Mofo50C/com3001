@@ -2,11 +2,11 @@ include ../common/bench.common.mk
 
 INCS+=-I$(abspath ..)/hashmap
 
-SRCS+=map.c tm_hashmap.c
+SRCS+=map.c tm_hashmap.c bench_utils.c
 include ../common/Makefile.common
 
 
-build: build-algs build-bench-utils
+build: build-algs
 	$(MAKE) -C $(COMMON_DIR)/lib
 
 prepare-%:
@@ -15,7 +15,7 @@ prepare-%:
 PROGS=test bench transfer
 
 .SECONDEXPANSION:
-DEPS:=$$(wildcard $(ALGS_DIR)/$$*/out/*.o) $$(wildcard $(COMMON_DIR)/lib/out/*.o) $$(wildcard $(ROOT_DIR)/common/out/*.o)
+DEPS:=$$(wildcard $(ALGS_DIR)/$$*/out/*.o) $$(wildcard $(COMMON_DIR)/lib/out/*.o)
 
 define make-prog-target
 $$(addprefix $1-,$$(ALGS)): $1-%: prepare-% $$(DEPS) $$(OBJS) $$(OUT_DIR)/$1.o

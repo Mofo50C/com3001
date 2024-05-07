@@ -27,7 +27,11 @@ void norec_tx_write(void *pdirect_field, size_t field_size, void *buf);
 
 void norec_tx_commit(void);
 
-void norec_tx_abort(void);
+void norec_tx_abort(int err);
+
+void norec_try_irrevoc(void);
+
+int norec_isirrevoc(void);
 
 void norec_tx_process(void);
 

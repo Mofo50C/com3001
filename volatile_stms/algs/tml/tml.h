@@ -69,7 +69,10 @@ tml_tx_malloc(sizeof(type))
 #define TML_ZNEW(type)\
 tml_tx_zalloc(sizeof(type))
 
-#define TML_ABORT tml_tx_abort
+#define TML_ABORT()\
+tml_tx_abort(0);
+
 #define TML_RESTART tx_restart
+#define TML_IRREVOC tml_try_irrevoc
 
 #endif

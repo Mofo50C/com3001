@@ -13,10 +13,6 @@ void norec_thread_enter(PMEMobjpool *pop);
 
 void norec_thread_exit(void);
 
-void norec_startup(void);
-
-void norec_shutdown(void);
-
 int norec_tx_begin(jmp_buf env);
 
 void norec_tx_commit(void);
@@ -31,11 +27,11 @@ void norec_tx_free(PMEMoid poid);
 
 void norec_tx_restart(void);
 
-void norec_tx_abort(void);
+void norec_tx_abort(int err);
 
-int norec_get_retry(void);
+void norec_try_irrevoc(void);
 
-pid_t norec_get_tid(void);
+int norec_isirrevoc(void);
 
 void norec_rdset_add(void *pdirect, void *src, size_t size);
 

@@ -1,9 +1,9 @@
 include ../common/bench.common.mk
 
-SRCS+=test.c
+SRCS+=test.c bench_utils.c
 include ../common/Makefile.common
 
-build: build-algs build-bench-utils
+build: build-algs
 
 prepare-%:
 	$(eval CFLAGS+=-D$(call toupper,$*))

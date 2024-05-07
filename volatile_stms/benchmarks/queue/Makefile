@@ -2,11 +2,11 @@ include ../common/bench.common.mk
 
 INCS+=-I$(abspath ..)/queue
 
-SRCS+=queue.c tm_queue.c
+SRCS+=queue.c tm_queue.c bench_utils.c
 include ../common/Makefile.common
 
 
-build: build-algs build-bench-utils
+build: build-algs
 	$(MAKE) -C $(COMMON_DIR)/lib
 
 prepare-%:

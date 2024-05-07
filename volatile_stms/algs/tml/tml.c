@@ -2,7 +2,6 @@
 #include <unistd.h>
 
 #include <stdlib.h>
-#include <stdatomic.h>
 #include <errno.h>
 #include <string.h>
 #include "tx.h"
@@ -11,7 +10,7 @@
 #include "util.h"
 
 struct tx_meta {
-	int loc;
+	uint64_t loc;
 };
 
 static struct tx_meta *get_tx_meta(void)
@@ -23,25 +22,25 @@ static struct tx_meta *get_tx_meta(void)
 /* algorithm specific */
 
 /* global lock */
-static _Atomic int glb = 0;
+static uint64_t glb = 0;
 
 void tml_tx_restart(void)
 {
-	tx_restart();
+	return tx_restart();
 }
 
-void tml_tx_abort(void)
+void tml_tx_abort(int err)
 {
-	tx_abort(0);
+	return tx_abort(err);
 }
 
 void tml_thread_enter(void)
 {
-	tx_thread_enter();
+	return tx_thread_enter();
 }
 
 void tml_thread_exit(void) {
-	tx_thread_exit();
+	return tx_thread_exit();
 }
 
 int tml_tx_begin(jmp_buf env)
@@ -58,13 +57,13 @@ int tml_tx_begin(jmp_buf env)
 	return tx_begin(env);
 }
 
-void tml_tx_write(void)
+void tml_try_irrevoc(void)
 {
 	struct tx_meta *tx = get_tx_meta();
 	ASSERT_IN_WORK(tx_get_stage());
 	
 	if (IS_EVEN(tx->loc)) {
-		if (!atomic_compare_exchange_strong(&glb, &tx->loc, tx->loc + 1)) {
+		if (!CAS(&glb, &tx->loc, tx->loc + 1)) {
 			tml_tx_restart();
 		} else {
 			tx->loc++;
@@ -72,17 +71,24 @@ void tml_tx_write(void)
 	}
 }
 
+void tml_tx_write(void)
+{
+	return tml_try_irrevoc();
+}
+
 void tml_tx_read(void)
 {	
 	struct tx_meta *tx = get_tx_meta();
 	ASSERT_IN_WORK(tx_get_stage());
 
+	CFENCE;
 	if (IS_EVEN(tx->loc) && glb != tx->loc)
 		tml_tx_restart();
 }
 
 int tml_tx_free(void *ptr)
 {
+	tml_try_irrevoc();
 	return tx_free(ptr);
 }
 
@@ -98,23 +104,29 @@ void *tml_tx_zalloc(size_t size)
 
 void tml_tx_commit(void)
 {
-	if (tx_get_level() == 0) {
-		tx_reclaim_frees();
+	if (tx_get_level() > 0) {
+		return tx_commit();
 	}
+
+	tx_reclaim_frees();
 	tx_commit();
 }
 
 void tml_tx_process(void)
 {
-	tx_process(tml_tx_commit);
+	return tx_process(tml_tx_commit);
 }
 
 void tml_on_end(void)
 {
 	struct tx_meta *tx = get_tx_meta();
-	if (!tx_get_retry()) {
-		if (IS_ODD(tx->loc))
-			glb = tx->loc + 1;
+	if (tx_get_retry())
+		return;
+
+	/* release the lock on end */
+	if (IS_ODD(tx->loc)) {
+		CFENCE;
+		glb = tx->loc + 1;
 	}
 }
 

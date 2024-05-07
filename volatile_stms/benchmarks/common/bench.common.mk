@@ -5,6 +5,8 @@ ROOT_DIR:=$(abspath ..)
 STM_DIR:=$(abspath ../..)
 ALGS_DIR:=$(STM_DIR)/algs
 
+vpath %.c $(ROOT_DIR)/common
+
 # LIBS+=-L$(STM_DIR)/lib
 # LIBS+=-lrpmalloc
 
@@ -17,6 +19,3 @@ LIBS+=-lpthread
 .PHONY: build-algs
 build-algs:
 	$(MAKE) -C $(ALGS_DIR)
-
-build-bench-utils:
-	$(MAKE) -C $(ROOT_DIR)/common

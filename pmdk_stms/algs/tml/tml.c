@@ -2,21 +2,13 @@
 #include <unistd.h>
 
 #include <stdbool.h>
-#include <stdatomic.h>
 #include "tx.h"
 #include "tx_util.h"
 #include "tml_base.h"
 #include "util.h"
 
 struct tx_meta {
-	PMEMobjpool *pop;
-	pid_t tid;
-	int loc;
-	int retry;
-	int level;
-	int num_retries;
-	int num_commits;
-	struct tx_vec *free_list;
+	uint64_t loc;
 };
 
 static struct tx_meta *get_tx_meta(void)
@@ -26,58 +18,26 @@ static struct tx_meta *get_tx_meta(void)
 }
 
 /* global lock */
-static _Atomic int glb = 0;
-
-int tml_get_retry(void)
-{
-	return get_tx_meta()->retry;
-}
-
-pid_t tml_get_tid(void)
-{
-	return get_tx_meta()->tid;
-}
+static uint64_t glb = 0;
 
 void tml_tx_restart(void)
 {
-	struct tx_meta *tx = get_tx_meta();
-	tx->retry = 1;
-	tx->num_retries++;
-	pmemobj_tx_abort(-1);
+	return tx_restart();
 }
 
-void tml_tx_abort(void)
+void tml_tx_abort(int err)
 {
-	pmemobj_tx_abort(0);
+	return pmemobj_tx_abort(err);
 }
 
 void tml_thread_enter(PMEMobjpool *pop)
 {
-	struct tx_meta *tx = get_tx_meta();
-	tx->tid = gettid();
-	tx->pop = pop;
-	tx->num_retries = 0;
-	if (tx_vector_init(&tx->free_list))
-		goto err_abort;
-
-	return;
-
-err_abort:
-	DEBUGLOG("failed to init");
-	abort();
+	return tx_thread_enter(pop);
 }
 
-void tml_thread_exit(void) {
-	struct tx_meta *tx = get_tx_meta();
-	tx_add_metrics(tx->num_retries, tx->num_commits);
-	tx_vector_destroy(&tx->free_list);
-}
-
-void tml_startup(void) {}
-
-void tml_shutdown(void)
+void tml_thread_exit(void)
 {
-	tx_print_metrics();
+	return tx_thread_exit();
 }
 
 int tml_tx_begin(jmp_buf env)
@@ -86,103 +46,59 @@ int tml_tx_begin(jmp_buf env)
 	struct tx_meta *tx = get_tx_meta();
 
 	if (stage == TX_STAGE_NONE) {
-		tx->retry = 0;
-
 		do {
 			tx->loc = glb;
 		} while (IS_ODD(tx->loc));
-	} else if (stage == TX_STAGE_WORK) {
-		tx->level++;
 	}
 
-	return pmemobj_tx_begin(tx->pop, env, TX_PARAM_NONE, TX_PARAM_NONE);
-}
-
-void tx_reclaim_frees(void)
-{
-	struct tx_meta *tx = get_tx_meta();
-	struct tx_vec_entry *entry;
-	int i;
-	for (i = 0; i < tx->free_list->length; i++) {
-		entry = &tx->free_list->arr[i];
-
-		DEBUGPRINT("[%d] freeing...", tx->tid);
-		if (!OID_IS_NULL(entry->oid))
-			pmemobj_tx_free(entry->oid);
-	}
+	return tx_begin(env);
 }
 
 void tml_tx_commit(void)
 {
-	struct tx_meta *tx = get_tx_meta();
-	if (tx->level == 0) {
-		tx_reclaim_frees();
+	if (tx_get_level() > 0) {
+		return pmemobj_tx_commit();
 	}
+
+	tx_reclaim_frees();
 	pmemobj_tx_commit();
 }
 
 void tml_tx_process(void)
 {
-	enum pobj_tx_stage stage = pmemobj_tx_stage();
+	return tx_process(tml_tx_commit);
+}
 
-	if (stage == TX_STAGE_WORK) {
-		tml_tx_commit();
-	} else {
-		pmemobj_tx_process();
+void tml_on_end(void)
+{	
+	struct tx_meta *tx = get_tx_meta();
+
+	if (tx_get_retry())
+		return;
+
+	/* release the lock on end */
+	if (IS_ODD(tx->loc)) {
+		CFENCE;
+		glb = tx->loc + 1;
 	}
 }
 
 int tml_tx_end(void)
-{	
-	struct tx_meta *tx = get_tx_meta();
-	if (tx->level > 0) {
-		tx->level--;
-	} else {
-		tx_vector_clear(tx->free_list);
-
-		if (!tx->retry && !pmemobj_tx_errno()) {
-			tx->num_commits++;
-		}
-
-		/* release the lock on end (commit or abort) except when retrying */
-		if (!tx->retry && IS_ODD(tx->loc))
-			glb = tx->loc + 1;
-	}
-	return pmemobj_tx_end();
+{
+	return tx_end(tml_on_end);
 }
 
 void tml_tx_free(PMEMoid poid)
 {
-	struct tx_meta *tx = get_tx_meta();
-
-	int i;
-	for (i = 0; i < tx->free_list->length; i++)
-	{
-		struct tx_vec_entry *e = &tx->free_list->arr[i];
-		if (OID_EQUALS(e->oid, poid)) {
-			e->oid = OID_NULL;
-			break;
-		}
-	}
-
-	struct tx_vec_entry e = {
-		.oid = poid,
-		.addr = NULL,
-		.pval = NULL,
-		.size = 0
-	};
-
-	if (tx_vector_append(tx->free_list, &e, NULL)) {
-		DEBUGLOG("tx_free failed");
-		pmemobj_tx_abort(errno);
-	}
+	tml_try_irrevoc();
+	return tx_free(poid);
 }
 
-void tml_tx_write(void)
+void tml_try_irrevoc(void)
 {
 	struct tx_meta *tx = get_tx_meta();
 	if (IS_EVEN(tx->loc)) {
-		if (!atomic_compare_exchange_strong(&glb, &tx->loc, tx->loc + 1)) {
+		if (!CAS(&glb, &tx->loc, tx->loc + 1)) {
 			return tml_tx_restart();
 		} else {
 			tx->loc++;
@@ -190,9 +106,16 @@ void tml_tx_write(void)
 	}
 }
 
+void tml_tx_write(void)
+{
+	return tml_try_irrevoc();
+}
+
 void tml_tx_read(void)
 {	
 	struct tx_meta *tx = get_tx_meta();
+
+	CFENCE;
 	if (IS_EVEN(tx->loc) && glb != tx->loc)
 		return tml_tx_restart();
 }

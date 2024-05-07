@@ -40,6 +40,7 @@
 	#define STM_ABORT NOREC_ABORT
 	#define STM_RETURN NOREC_RETURN
 	#define STM_RESTART NOREC_RESTART
+	#define STM_IRREVOC NOREC_IRREVOC
 #else
 	#include <tml.h>
 
@@ -79,6 +80,7 @@
 	#define STM_ABORT TML_ABORT
 	#define STM_RETURN TML_RETURN
 	#define STM_RESTART TML_RESTART
+	#define STM_IRREVOC TML_IRREVOC
 #endif
 
 #define STM_READ_FIELD_L(o, field)\

@@ -1,8 +1,8 @@
 include ../common/bench.common.mk
 
-CFLAGS+=-DTML
-OBJS+=$(wildcard $(ALGS_DIR)/tml/out/*.o)
-SRCS+=test.c
+CFLAGS+=-DNOREC
+OBJS+=$(wildcard $(ALGS_DIR)/norec/out/*.o)
+SRCS+=test.c bench_utils.c
 PROG=prog
 
 include ../common/Makefile.common

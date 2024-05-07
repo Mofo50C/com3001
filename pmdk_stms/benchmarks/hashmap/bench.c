@@ -7,12 +7,12 @@
 #include <libpmemobj.h>
 #include <time.h>
 
+#include "bench_utils.h"
 #include "map.h"
 
 #define RAII
 #include "ptm.h" 
 
-#define NANOSEC 1000000000.0
 #define CONST_MULT 100
 #define POOL_SIZE PMEMOBJ_MIN_POOL * 50
 
@@ -29,7 +29,7 @@ PMEMobjpool *pop;
 struct worker_args {
 	int idx;
 	tm_hashmap_t map;
-	int n_rounds;
+	int n_secs;
 	int num_keys;
 	int num_threads;
 };
@@ -40,14 +40,17 @@ void *worker_insert(void *arg)
 	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
 	PTM_TH_ENTER(pop);
 
-	int i;
-	for (i = 0; i < args->n_rounds; i++) {
-		int val = args->idx * args->num_threads * args->n_rounds + i;
-		// int val = rand() % 1000;
+	struct timespec s, f;
+	clock_gettime(CLOCK_MONOTONIC, &s);
+	double elapsed;
+	do {
+		int val = rand() % 1000;
 		int key = rand() % args->num_keys;
 		TX_map_insert(args->map, key, val);
-	}
 
+		clock_gettime(CLOCK_MONOTONIC, &f);
+		elapsed = get_elapsed_time(&s, &f);
+	} while (elapsed < args->n_secs);
 	PTM_TH_EXIT();
 
 	return NULL;
@@ -59,11 +62,16 @@ void *worker_delete(void *arg)
 	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
 	PTM_TH_ENTER(pop);
 
-	int i;
-	for (i = 0; i < args->n_rounds; i++) {
+	struct timespec s, f;
+	clock_gettime(CLOCK_MONOTONIC, &s);
+	double elapsed;
+	do {
 		int key = rand() % args->num_keys;
 		TX_map_delete(args->map, key);
-	}
+
+		clock_gettime(CLOCK_MONOTONIC, &f);
+		elapsed = get_elapsed_time(&s, &f);
+	} while (elapsed < args->n_secs);
 
 	PTM_TH_EXIT();
 
@@ -76,11 +84,16 @@ void *worker_get(void *arg)
 	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
 	PTM_TH_ENTER(pop);
 
-	int i;
-	for (i = 0; i < args->n_rounds; i++) {
+	struct timespec s, f;
+	clock_gettime(CLOCK_MONOTONIC, &s);
+	double elapsed;
+	do {
 		int key = rand() % args->num_keys;
 		TX_map_read(args->map, key);
-	}
+
+		clock_gettime(CLOCK_MONOTONIC, &f);
+		elapsed = get_elapsed_time(&s, &f);
+	} while (elapsed < args->n_secs);
 
 	PTM_TH_EXIT();
 
@@ -90,19 +103,23 @@ void *worker_get(void *arg)
 int main(int argc, char const *argv[])
 {
 	if (argc < 5) {
-		printf("usage: %s <pool_file> <num_threads> <num_keys> <num_rounds> [inserts] [read] [dels]\n", argv[0]);
+		printf("usage: %s <pool_file> <num_threads> <num_keys> <n_secs> [inserts] [read] [dels]\n", argv[0]);
 		return 1;
 	}
 
 	int num_threads = atoi(argv[2]);
-
 	if (num_threads < 1) {
 		printf("<nthreads> must be at least 1\n");
 		return 1;
 	}
 
 	int num_keys = atoi(argv[3]);
-	int n_rounds = atoi(argv[4]);
+	
+	int n_secs = atoi(argv[4]);
+	if (n_secs < 1) {
+		printf("<num_secs> must be at least 1\n");
+		return 1;
+	}
 
 	int put_ratio = 100;
 	if (argc >= 6)
@@ -145,7 +162,7 @@ int main(int argc, char const *argv[])
 
 	PTM_STARTUP();
 
-	if (hashmap_new(pop, &rootp->map)) {
+	if (hashmap_new_cap(pop, &rootp->map, num_keys)) {
 		printf("error in new...\n");
 		pmemobj_close(pop);
 		return 1;
@@ -166,7 +183,7 @@ int main(int argc, char const *argv[])
 		struct worker_args *args = &arg_data[i];
 		args->idx = i + 1;
 		args->map = map;
-		args->n_rounds = n_rounds;
+		args->n_secs = n_secs;
 		args->num_keys = num_keys;
 		args->num_threads = num_threads;
 
@@ -185,8 +202,7 @@ int main(int argc, char const *argv[])
 	}
 
 	clock_gettime(CLOCK_MONOTONIC, &f);
-	double elapsed_time = (f.tv_sec - s.tv_sec);
-	elapsed_time += (f.tv_nsec - s.tv_nsec) / NANOSEC;
+	double elapsed_time = get_elapsed_time(&s, &f);
 
 	print_map(map);
 	printf("Elapsed: %f\n", elapsed_time);

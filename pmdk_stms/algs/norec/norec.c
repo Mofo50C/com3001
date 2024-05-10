@@ -83,6 +83,7 @@ void norec_rdset_add(void *pdirect, void *src, size_t size)
 	return;
 
 err_abort:
+	DEBUGLOG("failed to add to rdset");
 	norec_tx_abort(err);
 }
 
@@ -104,27 +105,29 @@ void norec_tx_write(void *pdirect_field, size_t size, void *buf)
 	if (entry != NULL) {
 		struct tx_vec_entry *v = &tx->write_set->arr[entry->index];
 		free(v->pval);
-		v->pval = pval;
-		v->size = size;
-	} else {
-		struct tx_vec_entry e = {
-			.pval = pval,
-			.size = size,
-			.addr = pdirect_field
-		};
+		// v->pval = pval;
+		// v->size = size;
+		v->addr = NULL;
+	}
 
-		size_t prev_idx;
-		if (tx_vector_append(tx->write_set, &e, &prev_idx)) {
-			err = errno;
-			free(pval);
-			goto err_abort;
-		}
 
-		if (tx_hash_put(tx->wrset_lookup, field_key, prev_idx) < 0) {
-			err = errno;
-			free(pval);
-			goto err_abort;
-		}
+	struct tx_vec_entry e = {
+		.pval = pval,
+		.size = size,
+		.addr = pdirect_field
+	};
+
+	size_t idx;
+	if (tx_vector_append(tx->write_set, &e, &idx)) {
+		err = errno;
+		free(pval);
+		goto err_abort;
+	}
+
+	if (tx_hash_put(tx->wrset_lookup, field_key, idx) == -1) {
+		err = errno;
+		free(pval);
+		goto err_abort;
 	}
 
 	return;
@@ -137,7 +140,7 @@ err_abort:
 void norec_tx_free(PMEMoid poid)
 {
 	norec_try_irrevoc();
-	return tx_free(poid);
+	pmemobj_tx_free(poid);
 }
 
 int validate_rdset(struct tx_vec *rdset)
@@ -145,11 +148,18 @@ int validate_rdset(struct tx_vec *rdset)
 	int i;
 	for (i = 0; i < rdset->length; i++) {
 		struct tx_vec_entry *e = &rdset->arr[i];
+		if (e->addr == NULL)
+			goto err_abort;
 
 		DEBUGPRINT("[%d] validating...", tx_get_tid());
 		if (memcmp(e->pval, e->addr, e->size))
 			return 0;
 	}
+	return 1;
+
+err_abort:
+	DEBUGLOG("failed to validate: invalid address");
+	norec_tx_abort(EINVAL);
 	return 1;
 }
 
@@ -159,6 +169,8 @@ void persist_redo_wrset(struct tx_vec *wrset)
 	int i;
 	for (i = 0; i < wrset->length; i++) {
 		entry = &wrset->arr[i];
+		if (entry->addr == NULL)
+			continue;
 
 		DEBUGPRINT("[%d] writing...", tx_get_tid());
 		pmemobj_tx_add_range_direct(entry->addr, entry->size);
@@ -243,9 +255,6 @@ int norec_tx_begin(jmp_buf env)
 	struct tx_meta *tx = get_tx_meta();
 	if (stage == TX_STAGE_NONE) {
 		tx->irrevoc = 0;
-		// do {
-		// 	tx->loc = glb;
-		// } while (IS_ODD(tx->loc));	
 		tx->loc = glb & ~(1L);
 	}
 	
@@ -256,16 +265,11 @@ void norec_tx_commit(void)
 {
 	struct tx_meta *tx = get_tx_meta();
 
-	if (tx_get_level() > 0) {
-		return pmemobj_tx_commit();
-	}
-
-	if (!tx->write_set->length) {
+	if ((tx_get_level() > 0) || (!tx->write_set->length))  {
 		return pmemobj_tx_commit();
 	}
 
 	if (tx->irrevoc) {
-		tx_reclaim_frees();
 		return pmemobj_tx_commit();
 	}
 
@@ -277,7 +281,6 @@ void norec_tx_commit(void)
 	glb = tx->loc + 2;
 
 	DEBUGPRINT("[%d] committing...", tx_get_tid());
-	tx_reclaim_frees();
 	pmemobj_tx_commit();
 
 }

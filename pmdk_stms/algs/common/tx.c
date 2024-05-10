@@ -16,7 +16,6 @@ struct tx {
 	int level;
 	int num_retries;
 	int num_commits;
-	struct tx_vec *free_list;
 };
 
 static _Atomic uint64_t total_retries = 0;
@@ -76,54 +75,20 @@ void tx_restart(void)
 	pmemobj_tx_abort(-1);
 }
 
-void tx_free(PMEMoid poid)
-{
-	struct tx *tx = get_tx();
-
-	int i;
-	for (i = 0; i < tx->free_list->length; i++)
-	{
-		struct tx_vec_entry *e = &tx->free_list->arr[i];
-		if (OID_EQUALS(e->oid, poid)) {
-			e->oid = OID_NULL;
-			break;
-		}
-	}
-
-	struct tx_vec_entry e = {
-		.oid = poid,
-		.addr = NULL,
-		.pval = NULL,
-		.size = 0
-	};
-
-	if (tx_vector_append(tx->free_list, &e, NULL)) {
-		DEBUGLOG("tx_free failed");
-		pmemobj_tx_abort(errno);
-	}
-}
-
 void tx_thread_enter(PMEMobjpool *pop)
 {
 	struct tx *tx = get_tx();
 	tx->tid = gettid();
 	tx->pop = pop;
 	tx->num_retries = 0;
-	if (tx_vector_init(&tx->free_list))
-		goto err_abort;
 
 	return;
-
-err_abort:
-	DEBUGLOG("failed to init");
-	abort();
 }
 
 void tx_thread_exit(void)
 {
 	struct tx *tx = get_tx();
 	tx_add_metrics(tx->num_retries, tx->num_commits);
-	tx_vector_destroy(&tx->free_list);
 }
 
 void tx_startup(void) {}
@@ -133,28 +98,12 @@ void tx_shutdown(void)
 	tx_print_metrics();
 }
 
-void tx_reclaim_frees(void)
-{
-	struct tx *tx = get_tx();
-	struct tx_vec_entry *entry;
-	int i;
-	for (i = 0; i < tx->free_list->length; i++) {
-		entry = &tx->free_list->arr[i];
-
-		DEBUGPRINT("[%d] freeing...", tx->tid);
-		if (!OID_IS_NULL(entry->oid))
-			pmemobj_tx_free(entry->oid);
-	}
-}
-
 int tx_end(void (*end_cb)(void))
 {
 	struct tx *tx = get_tx();
 	if (tx->level > 0) {
 		tx->level--;
 	} else {
-		tx_vector_clear(tx->free_list);
-
 		if (!tx->retry && !pmemobj_tx_errno()) {
 			tx->num_commits++;
 		}

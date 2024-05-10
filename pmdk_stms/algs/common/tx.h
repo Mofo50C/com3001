@@ -33,11 +33,6 @@ void tx_shutdown(void);
 
 void tx_restart(void);
 
-void tx_reclaim_frees(void);
-
-void tx_free(PMEMoid poid);
-
-
 #ifdef __cplusplus
 }
 #endif

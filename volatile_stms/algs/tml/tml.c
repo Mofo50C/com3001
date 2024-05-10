@@ -11,6 +11,7 @@
 
 struct tx_meta {
 	uint64_t loc;
+	int irrevoc;
 };
 
 static struct tx_meta *get_tx_meta(void)
@@ -49,6 +50,7 @@ int tml_tx_begin(jmp_buf env)
 	struct tx_meta *tx = get_tx_meta();
 	
 	if (stage == TX_STAGE_NONE) {
+		tx->irrevoc = 0;
 		do {
 			tx->loc = glb;
 		} while (IS_ODD(tx->loc));
@@ -61,6 +63,8 @@ void tml_try_irrevoc(void)
 {
 	struct tx_meta *tx = get_tx_meta();
 	ASSERT_IN_WORK(tx_get_stage());
+	if (tx->irrevoc)
+		return;
 	
 	if (IS_EVEN(tx->loc)) {
 		if (!CAS(&glb, &tx->loc, tx->loc + 1)) {
@@ -69,6 +73,7 @@ void tml_try_irrevoc(void)
 			tx->loc++;
 		}
 	}
+	tx->irrevoc = 1;
 }
 
 void tml_tx_write(void)
@@ -80,6 +85,8 @@ void tml_tx_read(void)
 {	
 	struct tx_meta *tx = get_tx_meta();
 	ASSERT_IN_WORK(tx_get_stage());
+	if (tx->irrevoc)
+		return;
 
 	CFENCE;
 	if (IS_EVEN(tx->loc) && glb != tx->loc)
@@ -104,12 +111,10 @@ void *tml_tx_zalloc(size_t size)
 
 void tml_tx_commit(void)
 {
-	if (tx_get_level() > 0) {
-		return tx_commit();
-	}
+	if (tx_get_level() == 0)
+		tx_reclaim_frees();
 
-	tx_reclaim_frees();
-	tx_commit();
+	return tx_commit();
 }
 
 void tml_tx_process(void)

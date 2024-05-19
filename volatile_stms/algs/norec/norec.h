@@ -63,9 +63,8 @@ _NWRET:\
 #define _NOREC_READ(p, t, sz) \
 ({\
 	__label__ _NRRET;\
-	t _ret;\
+	t _ret = *(p);\
 	if (norec_isirrevoc()) {\
-		_ret = *(p);\
 		goto _NRRET;\
 	}\
 	if (norec_wrset_get(p, &_ret, sz)) {\

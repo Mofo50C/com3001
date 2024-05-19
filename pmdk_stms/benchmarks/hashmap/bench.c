@@ -204,7 +204,7 @@ int main(int argc, char const *argv[])
 	clock_gettime(CLOCK_MONOTONIC, &f);
 	double elapsed_time = get_elapsed_time(&s, &f);
 
-	print_map(map);
+	// print_map(map);
 	printf("Elapsed: %f\n", elapsed_time);
 
 	if (hashmap_destroy(pop, &rootp->map))

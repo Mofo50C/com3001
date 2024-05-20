@@ -27,7 +27,45 @@ struct worker_args {
 	int n_secs;
 	int num_keys;
 	int num_threads;
+	int put_ratio;
+	int get_ratio;
+	int del_ratio;
 };
+
+void *worker(void *arg)
+{
+	clamp_cpu(2);
+	struct worker_args *args = (struct worker_args *)arg;
+	int put_ratio = args->put_ratio;
+	int get_ratio = args->get_ratio;
+	int del_ratio = args->del_ratio;
+
+	STM_TH_ENTER();
+
+	struct timespec s, f;
+	clock_gettime(CLOCK_MONOTONIC, &s);
+	double elapsed;
+	do {
+		int val = rand() % 1000;
+		int key = rand() % args->num_keys;
+
+		int r = rand() % (100 * CONST_MULT);
+		if (r < put_ratio) {
+			TX_map_insert(args->map, key, val);
+		} else if (r >= put_ratio && r < get_ratio + put_ratio) {
+			TX_map_read(args->map, key);
+		} else if (r < put_ratio + get_ratio + del_ratio) {
+			TX_map_delete(args->map, key);
+		}
+
+		clock_gettime(CLOCK_MONOTONIC, &f);
+		elapsed = get_elapsed_time(&s, &f);
+	} while (elapsed < args->n_secs);
+
+	STM_TH_EXIT();
+
+	return NULL;
+}
 
 void *worker_insert(void *arg)
 {
@@ -150,7 +188,7 @@ int main(int argc, char const *argv[])
 
 	tm_hashmap_t *map = root.map;
 
-	print_map(map);
+	// print_map(map);
 
 	srand(time(NULL));
 
@@ -168,14 +206,20 @@ int main(int argc, char const *argv[])
 		args->num_keys = num_keys;
 		args->num_threads = num_threads;
 
-		int r = rand() % (100 * CONST_MULT);
-		if (r < put_ratio) {
-			pthread_create(&workers[i], NULL, worker_insert, args);
-		} else if (r >= put_ratio && r < get_ratio + put_ratio) {
-			pthread_create(&workers[i], NULL, worker_get, args);
-		} else if (r < put_ratio + get_ratio + del_ratio) {
-			pthread_create(&workers[i], NULL, worker_delete, args);
-		}
+		args->put_ratio = put_ratio;
+		args->get_ratio = get_ratio;
+		args->del_ratio = del_ratio;
+
+		pthread_create(&workers[i], NULL, worker, args);
+
+		// int r = rand() % (100 * CONST_MULT);
+		// if (r < put_ratio) {
+		// 	pthread_create(&workers[i], NULL, worker_insert, args);
+		// } else if (r >= put_ratio && r < get_ratio + put_ratio) {
+		// 	pthread_create(&workers[i], NULL, worker_get, args);
+		// } else if (r < put_ratio + get_ratio + del_ratio) {
+		// 	pthread_create(&workers[i], NULL, worker_delete, args);
+		// }
 	}
 
 	for (i = 0; i < num_threads; i++) {

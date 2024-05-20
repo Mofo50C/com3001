@@ -25,7 +25,44 @@ struct worker_args {
 	int n_secs;
 	int num_threads;
 	tm_queue_t *queue;
+	int put_ratio;
+	int get_ratio;
+	int del_ratio;
 };
+
+void *worker(void *arg)
+{
+	clamp_cpu(2);
+	struct worker_args *args = (struct worker_args *)arg;
+	int put_ratio = args->put_ratio;
+	int get_ratio = args->get_ratio;
+	int del_ratio = args->del_ratio;
+
+	STM_TH_ENTER();
+	
+	struct timespec s, f;
+	clock_gettime(CLOCK_MONOTONIC, &s);
+	double elapsed;
+	do {
+		int val = rand() & 1000;
+		int split = rand() % 2;
+		int r = rand() % (100 * CONST_MULT);
+		if (r < put_ratio) {
+			(split ? TX_enqueue_back : TX_enqueue_front)(args->queue, val);
+		} else if (r >= put_ratio && r < get_ratio + put_ratio) {
+			(split ? TX_peak_back : TX_peak_front)(args->queue);
+		} else if (r < put_ratio + get_ratio + del_ratio) {
+			(split ? TX_dequeue_back : TX_dequeue_front)(args->queue);
+		}
+	
+		clock_gettime(CLOCK_MONOTONIC, &f);
+		elapsed = get_elapsed_time(&s, &f);
+	} while (elapsed < args->n_secs);
+
+	STM_TH_EXIT();
+
+	return NULL;
+}
 
 void *worker_enqueue(void *arg)
 {
@@ -172,14 +209,20 @@ int main(int argc, char const *argv[])
 		args->n_secs = n_secs;
 		args->num_threads = num_threads;
 
-		int r = rand() % (100 * CONST_MULT);
-		if (r < put_ratio) {
-			pthread_create(&workers[i], NULL, worker_enqueue, args);
-		} else if (r >= put_ratio && r < get_ratio + put_ratio) {
-			pthread_create(&workers[i], NULL, worker_peak, args);
-		} else if (r < put_ratio + get_ratio + del_ratio) {
-			pthread_create(&workers[i], NULL, worker_dequeue, args);
-		}
+		args->put_ratio = put_ratio;
+		args->get_ratio = get_ratio;
+		args->del_ratio = del_ratio;
+
+		pthread_create(&workers[i], NULL, worker, args);
+
+		// int r = rand() % (100 * CONST_MULT);
+		// if (r < put_ratio) {
+		// 	pthread_create(&workers[i], NULL, worker_enqueue, args);
+		// } else if (r >= put_ratio && r < get_ratio + put_ratio) {
+		// 	pthread_create(&workers[i], NULL, worker_peak, args);
+		// } else if (r < put_ratio + get_ratio + del_ratio) {
+		// 	pthread_create(&workers[i], NULL, worker_dequeue, args);
+		// }
 	}
 	
 	for (i = 0; i < num_threads; i++) {

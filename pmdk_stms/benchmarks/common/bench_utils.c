@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <time.h>
+#include <sched.h>
 #include "bench_utils.h"
 
 #define NANOSEC 1000000000.0
@@ -33,4 +34,12 @@ double get_elapsed_time(struct timespec *start, struct timespec *finish)
     elapsed += (finish->tv_nsec - start->tv_nsec) / NANOSEC;
 
     return elapsed;
+}
+
+void clamp_cpu(int cpu)
+{
+	cpu_set_t cpuset;
+	CPU_ZERO(&cpuset);
+	CPU_SET(cpu, &cpuset);
+	sched_setaffinity(0, sizeof(cpuset), &cpuset);
 }

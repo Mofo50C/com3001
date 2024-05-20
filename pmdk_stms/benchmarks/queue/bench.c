@@ -35,6 +35,7 @@ struct worker_args {
 
 void *worker_enqueue(void *arg)
 {
+	clamp_cpu(2);
 	struct worker_args *args = (struct worker_args *)arg;
 	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
 	PTM_TH_ENTER(pop);
@@ -62,6 +63,7 @@ void *worker_enqueue(void *arg)
 
 void *worker_peak(void *arg)
 {
+	clamp_cpu(2);
 	struct worker_args *args = (struct worker_args *)arg;
 	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
 	PTM_TH_ENTER(pop);
@@ -86,6 +88,7 @@ void *worker_peak(void *arg)
 
 void *worker_dequeue(void *arg)
 {
+	clamp_cpu(2);
 	struct worker_args *args = (struct worker_args *)arg;
 	DEBUGPRINT("<P%d> with pid %d\n", args->idx, gettid());
 	PTM_TH_ENTER(pop);

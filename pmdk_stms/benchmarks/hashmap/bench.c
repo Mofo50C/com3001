@@ -36,6 +36,7 @@ struct worker_args {
 
 void *worker_insert(void *arg)
 {
+	clamp_cpu(2);
 	struct worker_args *args = (struct worker_args *)arg;
 	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
 	PTM_TH_ENTER(pop);
@@ -58,6 +59,7 @@ void *worker_insert(void *arg)
 
 void *worker_delete(void *arg)
 {
+	clamp_cpu(2);
 	struct worker_args *args = (struct worker_args *)arg;
 	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
 	PTM_TH_ENTER(pop);
@@ -80,6 +82,7 @@ void *worker_delete(void *arg)
 
 void *worker_get(void *arg)
 {
+	clamp_cpu(2);
 	struct worker_args *args = (struct worker_args *)arg;
 	DEBUGPRINT("<P%d> with pid %d", args->idx, gettid());
 	PTM_TH_ENTER(pop);

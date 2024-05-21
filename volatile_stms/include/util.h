@@ -90,8 +90,12 @@ __atomic_compare_exchange_n(ptr, expected, desired, 0, __ATOMIC_SEQ_CST, __ATOMI
 /* hashes a 64-bit integer input */
 static inline uint64_t fnv64(uint64_t x)
 {
-	/* return our new hash value */
-	return (FNV1_64_INIT ^ x) * FNV_64_PRIME;
+	uint64_t hval = FNV1_64_INIT;
+	const unsigned char *px = (const unsigned char *)&x;
+	for (int i = 0; i < 8; i++) {
+		hval = ((uint64_t)*px++ ^ hval) * FNV_64_PRIME;
+	}
+	return hval;
 }
 
 #endif
